@@ -10,6 +10,12 @@ pub struct GameSchema {
     /// values so old engines refuse forward-incompatible manifests.
     pub schema_version: u32,
 
+    /// Scene name loaded by `bootstrap`. Must match a `SceneSchema::name`
+    /// from `scenes/`. Defaults to `"main"`; CLI `chisel run --scene X`
+    /// can override at startup.
+    #[serde(default = "default_main_scene")]
+    pub main_scene: String,
+
     #[serde(default)]
     pub world: WorldSchema,
 
@@ -41,4 +47,8 @@ fn default_tick_rate() -> u32 {
 
 fn default_engine_name() -> String {
     "aabb".into()
+}
+
+fn default_main_scene() -> String {
+    "main".into()
 }

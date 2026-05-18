@@ -1,7 +1,7 @@
 use crate::ecs::component::Component;
 use crate::ecs::entity::Entity;
 use crate::ecs::error::Result;
-use crate::ecs::query::{QueryBuilder, QueryFetch};
+use crate::ecs::query::{QueryBuilder, QueryFetch, ReadOnlyQuery};
 use crate::ecs::resource::Resource;
 use crate::tag::registry::TagRegistry;
 
@@ -17,7 +17,7 @@ pub struct World {
 
 impl World {
     /// Creates an empty world and auto-inserts the always-present
-    /// resources (`TagRegistry`).
+    /// resources: `TagRegistry`, `EventQueue`.
     #[must_use]
     pub fn new() -> Self {
         todo!()
@@ -82,7 +82,16 @@ impl World {
 
     // ---- query ----
 
-    pub fn query<Q: QueryFetch>(&self) -> QueryBuilder<'_, Q> {
+    /// Read-only query. `Q` must be composed of `&T` only — the
+    /// `ReadOnlyQuery` bound rules out `&mut T`, which would be unsound
+    /// to hand out from a `&self` reference.
+    pub fn query<Q: QueryFetch + ReadOnlyQuery>(&self) -> QueryBuilder<'_, Q> {
+        todo!()
+    }
+
+    /// Read/write query. Takes `&mut self` so mutable borrows of
+    /// components are sound.
+    pub fn query_mut<Q: QueryFetch>(&mut self) -> QueryBuilder<'_, Q> {
         todo!()
     }
 

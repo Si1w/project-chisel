@@ -1,6 +1,5 @@
 use crate::ecs::schedule::{System, TickContext};
 use crate::ecs::world::World;
-use crate::event::bus::Bus;
 use crate::physics::engine::PhysicsEngine;
 
 /// v0 physics: naive O(n²) AABB integrator + overlap detector. No
@@ -10,8 +9,8 @@ use crate::physics::engine::PhysicsEngine;
 ///   1. `Velocity += gravity * dt`
 ///   2. `Position += Velocity * dt`
 ///   3. Pair-scan entities with both `Position` and `Aabb`; for each
-///      overlap, emit `DomainEvent::collision(a, b, normal)` on
-///      `bus.domain`.
+///      overlap, push `DomainEvent::collision(a, b, normal)` into
+///      the `EventQueue` resource.
 ///
 /// Reads the `Gravity` resource each tick; if absent, gravity is zero.
 #[derive(Default)]
@@ -29,7 +28,7 @@ impl System for AabbEngine {
         "physics.aabb"
     }
 
-    fn run(&mut self, _world: &mut World, _bus: &Bus, _ctx: &TickContext) {
+    fn run(&mut self, _world: &mut World, _ctx: &TickContext) {
         todo!()
     }
 }

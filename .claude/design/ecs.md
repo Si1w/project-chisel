@@ -21,57 +21,73 @@ Not final; signatures land via the next implementation plan and pass the
 naming table before code is written.
 
 ```rust
-pub struct Entity(u32, u32 /* generation */);
+pub struct Entity { pub index: u32, pub generation: u32 }
 
 pub trait Component: 'static + Send + Sync {}
 
-pub struct World { /* archetype storage, entity allocator */ }
+pub trait Resource: 'static + Send + Sync {}
+
+pub struct World { /* archetype storage, entity allocator, resources */ }
 
 impl World {
     pub fn spawn(&mut self) -> EntityBuilder<'_>;
     pub fn despawn(&mut self, e: Entity) -> Result<()>;
     pub fn get<T: Component>(&self, e: Entity) -> Option<&T>;
     pub fn get_mut<T: Component>(&mut self, e: Entity) -> Option<&mut T>;
-    pub fn query<Q: Query>(&self) -> QueryIter<'_, Q>;
+
+    // Split query API: ReadOnlyQuery bound on the &self path rules out
+    // &mut T and prevents unsound mutable aliasing through &World.
+    pub fn query<Q: QueryFetch + ReadOnlyQuery>(&self) -> QueryBuilder<'_, Q>;
+    pub fn query_mut<Q: QueryFetch>(&mut self) -> QueryBuilder<'_, Q>;
+
+    pub fn resource<R: Resource>(&self) -> Option<&R>;
+    pub fn resource_mut<R: Resource>(&mut self) -> Option<&mut R>;
 }
 
-pub trait System {
-    fn run(&mut self, world: &mut World, bus: &BusTx);
+// ECS systems take &mut World only — invariant 1 keeps `&Bus` out of
+// `run`. Systems emit via `world.resource_mut::<EventQueue>()`.
+pub trait System: Send {
+    fn name(&self) -> &str;
+    fn run(&mut self, world: &mut World, ctx: &TickContext);
 }
 
 pub struct Schedule { /* ordered systems for one tick */ }
 
 impl Schedule {
-    pub fn tick(&mut self, world: &mut World, bus: &BusTx);
+    pub fn tick(&mut self, world: &mut World, ctx: TickContext);
 }
 ```
 
 ## v0 built-in components
 
-- `Position { x: f32, y: f32 }`
-- `Velocity { x: f32, y: f32 }`
-- `Aabb { half_w: f32, half_h: f32 }`
-- `Tag` — zero-sized marker; one Rust type per named tag (`Player`,
-  `Wall`, `Ball`, ...). See note below.
-- `Animator { current: String, elapsed: f32, speed: f32, looping: bool }`
-  — placeholder; `AnimationSystem` only advances `elapsed` in v0.
+- `Position(Vec2)` — newtype with `Deref<Target = Vec2>`.
+- `Velocity(Vec2)` — same.
+- `Aabb { half_extents: Vec2 }`.
+- `TagSet` — **single bitset component** (`u128` inline) holding
+  interned `TagId`s. One `TagSet` per entity. See note below.
+- `Animator { clip: Clip, elapsed: f32, speed: f32, looping: bool }` —
+  placeholder; `AnimationStep` only advances `elapsed` in v0.
 
-**Tag note**: in Rust, each named tag (`Player`, `Wall`, ...) is its own
-zero-sized type implementing `Component`. The manifest references them
-by string; v0 maps strings to types via a closed enum/registry. v1's
-dynamic component path replaces this string → type mapping with
-reflection.
+**Tag note**: tags are **dynamically named**, not Rust types. The
+world-scoped `TagRegistry` resource interns each tag name (`"Player"`,
+`"Wall"`, ...) to a `TagId(u16)`; v0 caps at 128 distinct names because
+`TagSet` is a `u128` inline bitset (zero allocation, O(1) `contains` and
+bulk set ops). Query filters work on `TagId`, not Rust types. v1 widens
+the bitset if a real game saturates 128 tags.
+
+This differs from the hecs / bevy convention of "one Rust struct per
+tag" because our agent authors the tag set in TOML at design time and
+cannot extend a Rust enum. The dynamic registry is the trade-off — we
+lose compile-time tag typing but gain TOML-friendly authoring.
 
 ## v0 systems
 
-Scheduled in this order each tick:
+Scheduled in this order each tick (ECS systems only):
 
-1. `PhysicsIntegrate` — apply velocity to position.
-2. `CollisionDetect` — naive O(n²) AABB pair check; publish `Collision`
-   events.
-3. `RuleApply` — consumes events queued during the tick, applies their
-   mutations; this is the bridge between bus and world.
-4. `AnimationStep` — advance `Animator.elapsed`; in v0 no marker events
+1. `PhysicsIntegrate` + `CollisionDetect` — bundled inside `AabbEngine`
+   (which `impl System`); publishes `Collision` events into the
+   `EventQueue` resource.
+2. `AnimationStep` — advance `Animator.elapsed`; in v0 no marker events
    fire.
 
 ## Deferred (do not block v0 API decisions on these)
@@ -80,7 +96,8 @@ Scheduled in this order each tick:
 - Parallel system execution via topological scheduling.
 - Dynamic component registration / TOML-declared component schemas.
 - Change detection / observer queries.
-- Resources (singletons) — until a system actually needs one.
+- Bevy-style typed `Events<T>` resources (we use a single `EventQueue`
+  with `domain` and `marker` FIFOs; one consumer = `RuleProcessor`).
 
 The v0 API should not foreclose these. Specifically: do not expose
 internal archetype indices in the public type; keep `Query` parameters

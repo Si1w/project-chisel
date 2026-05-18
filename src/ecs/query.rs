@@ -10,24 +10,37 @@ pub trait QueryFetch: Sized {
     type Item<'w>;
 }
 
+/// Marker subtrait for fetches that only borrow components immutably.
+/// `World::query` requires this bound so a `&self` access can't smuggle
+/// out `&mut T` references.
+pub trait ReadOnlyQuery: QueryFetch {}
+
 impl<T: Component> QueryFetch for &T {
     type Item<'w> = &'w T;
 }
+impl<T: Component> ReadOnlyQuery for &T {}
 
 impl<T: Component> QueryFetch for &mut T {
     type Item<'w> = &'w mut T;
 }
+// `&mut T` deliberately does NOT impl `ReadOnlyQuery`.
 
 impl<A: QueryFetch, B: QueryFetch> QueryFetch for (A, B) {
     type Item<'w> = (A::Item<'w>, B::Item<'w>);
 }
+impl<A: ReadOnlyQuery, B: ReadOnlyQuery> ReadOnlyQuery for (A, B) {}
 
 impl<A: QueryFetch, B: QueryFetch, C: QueryFetch> QueryFetch for (A, B, C) {
     type Item<'w> = (A::Item<'w>, B::Item<'w>, C::Item<'w>);
 }
+impl<A: ReadOnlyQuery, B: ReadOnlyQuery, C: ReadOnlyQuery> ReadOnlyQuery for (A, B, C) {}
 
 impl<A: QueryFetch, B: QueryFetch, C: QueryFetch, D: QueryFetch> QueryFetch for (A, B, C, D) {
     type Item<'w> = (A::Item<'w>, B::Item<'w>, C::Item<'w>, D::Item<'w>);
+}
+impl<A: ReadOnlyQuery, B: ReadOnlyQuery, C: ReadOnlyQuery, D: ReadOnlyQuery> ReadOnlyQuery
+    for (A, B, C, D)
+{
 }
 
 /// Type-level marker: entity must have component `T` but the query does

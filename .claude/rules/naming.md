@@ -68,6 +68,10 @@ from a pattern.**
 | `*Command` | Control-plane or presentation directive | `PresentationCommand` |
 | `*Error` | Per-crate error enum (`thiserror`) | `CoreError`, `PhysicsError`, `RuntimeError` |
 | `*Schema` | Manifest schema struct (`serde::Deserialize` target); format-agnostic | `GameSchema`, `RuleSchema`, `InputSchema` |
+| `*Queue` | World-scoped FIFO (`VecDeque`-backed) drained per-tick; `Resource` | `EventQueue` |
+| `*Store` | World-scoped `Resource` indexed by name / id; read-mostly registry of authoring artifacts | `TemplateStore` |
+| `*Envelope` | Wire-format wrapper that injects routing metadata around a payload | `BusEnvelope` |
+| `*Processor` | Non-`System` per-tick component invoked by the runtime outside `Schedule` | `RuleProcessor` |
 
 ### Verb Conventions
 

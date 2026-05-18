@@ -1,5 +1,4 @@
 use crate::ecs::world::World;
-use crate::event::bus::Bus;
 
 /// Per-tick context shared by every system in a schedule. Replaces a
 /// generic Resources view for these two universally-needed values.
@@ -9,14 +8,19 @@ pub struct TickContext {
     pub dt: f32,
 }
 
-/// One unit of work per tick. Sync; sees mutable `World`, read-only
-/// `Bus` (broadcast `emit` is sync; inbound `send` is async and is not
-/// called from inside `run`).
+/// One unit of work per tick. Sync; sees only `&mut World` plus the
+/// `TickContext`.
+///
+/// **Does not get `&Bus`** — invariant 1 of the architecture: ECS
+/// systems don't subscribe to the bus. To emit a domain or marker
+/// event, write to the `EventQueue` resource via
+/// `world.resource_mut::<EventQueue>()`; the runtime forwards drained
+/// events to `Bus` after the tick.
 pub trait System: Send {
     /// Stable identifier used for logs and debug dumps.
     fn name(&self) -> &str;
 
-    fn run(&mut self, world: &mut World, bus: &Bus, ctx: &TickContext);
+    fn run(&mut self, world: &mut World, ctx: &TickContext);
 }
 
 /// Ordered list of systems. v0 runs them sequentially on the engine
@@ -40,9 +44,9 @@ impl Schedule {
     }
 
     /// Run every system once, in insertion order.
-    pub fn tick(&mut self, world: &mut World, bus: &Bus, ctx: TickContext) {
+    pub fn tick(&mut self, world: &mut World, ctx: TickContext) {
         for system in &mut self.systems {
-            system.run(world, bus, &ctx);
+            system.run(world, &ctx);
         }
     }
 }
