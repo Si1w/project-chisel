@@ -123,3 +123,26 @@ obvious typo fixes and one-line local changes, use judgment.
 **Do not start implementation until the user has confirmed the design is sound and efficient.** Spend ten minutes thinking and talking before you code — it prevents hours of rework.
 
 This rule applies to every new feature and every non-trivial change. Small, localized edits — typo fixes, one-line bug fixes, mechanical refactors — are exempt.
+
+Approved design documents live in `.claude/design/`, split by topic so each
+file is read on demand rather than as one large doc:
+
+- `.claude/design/problem.md` — problem statement, toy version, growth path,
+  existing landscape.
+- `.claude/design/architecture.md` — three layers (ECS / EventBus /
+  Presentation + Input), three invariants, crate layout, sync/async boundary.
+- `.claude/design/artifacts.md` — TOML/JSONL split, manifest directory layout,
+  JSONL channel taxonomy.
+- `.claude/design/ecs.md` — self-built ECS plan, reference points, deferred
+  features.
+- `.claude/design/physics.md` — AABB physics v0, `PhysicsEngine` trait,
+  future swap path.
+- `.claude/design/rules.md` — rule TOML syntax, event taxonomy, failure
+  semantics.
+- `.claude/design/cli.md` — `clap` derive subcommand list, authoring vs
+  runtime split.
+- `.claude/design/future.md` — premises, open questions, naming reservations,
+  next steps.
+
+Read the relevant topic file before touching code it covers; add or update
+topic files when designing a new feature.

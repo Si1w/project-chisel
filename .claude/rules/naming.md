@@ -51,12 +51,66 @@ module shape and keep the naming table current.
 
 ## Naming Table
 
-This template repository intentionally leaves the table empty. When starting a
-real project from the template, add project-specific entries here before using
-those names in code, docs, tests, configuration, or UI text.
+Three sub-tables. **Add new names by extending Suffix / Verb tables first, then
+fall back to Concept-keyed reservations only for names that cannot be derived
+from a pattern.**
+
+### Suffix Conventions
+
+| Suffix | Meaning | Examples |
+| --- | --- | --- |
+| `*Id` | Interned handle (`u16` / `u32`); cheap copy; round-trip via a `*Registry` | `TagId`; reserved: `ClipId`, `RuleId` |
+| `*Registry` | World-scoped name ↔ id intern table | `TagRegistry`; reserved: `ClipRegistry` |
+| `*Set` | Set-semantic collection with bulk ops (`contains_all`, `intersects`) | `TagSet`; reserved: `ChannelSet` |
+| `*Engine` | Pluggable trait + impl pair | `PhysicsEngine` / `AabbEngine`; reserved: `RenderEngine` |
+| `*Tx` / `*Rx` | Async channel sender / receiver wrapper | `BusTx`, `BusRx` |
+| `*Event` | Payload type traveling on the bus | `DomainEvent`, `MarkerEvent`, `InputEvent` |
+| `*Command` | Control-plane or presentation directive | `PresentationCommand` |
+| `*Error` | Per-crate error enum (`thiserror`) | `CoreError`, `PhysicsError`, `RuntimeError` |
+| `*Schema` | Manifest schema struct (`serde::Deserialize` target); format-agnostic | `GameSchema`, `RuleSchema`, `InputSchema` |
+
+### Verb Conventions
+
+| Verb | Use | Avoid |
+| --- | --- | --- |
+| `intern` | get-or-insert in a `*Registry` | `register`, `get_or_create`, `add` |
+| `lookup` | read-only query by string in a `*Registry` | `find`, `get_by_name`, `resolve` |
+| `name` | id → `Option<&str>` in a `*Registry` | `name_of`, `to_string`, `display` |
+| `spawn` / `despawn` | create / remove an entity | `create` / `delete`, `kill`, `destroy` |
+| `get` / `get_mut` | borrow a component from an entity | `fetch`, `read` |
+| `query` | build an iterator over entities matching a filter | `find`, `search`, `select` |
+| `insert` / `remove` | mutate a set or map | `add` / `delete` |
+| `contains` / `contains_all` / `intersects` | set membership / superset / overlap | `has`, `includes`, `overlaps`, `is_superset` |
+| `publish` | send an event to the bus (channel-specific, low-level) | `send`, `fire`, `post` |
+| `subscribe` | get a channel-specific `*Rx` | `listen`, `on`, `connect` |
+| `emit` | rule/system-side alias for `publish` on `domain` / `presentation` channels | `send`, `produce` |
+| `dispatch` | bus-internal routing of an event to its subscribers | `handle`, `process`, `route` |
+| `tick` | advance one schedule step (engine-internal) | `step` (CLI-only), `update` |
+| `step` | CLI command verb only — "advance N ticks" | — |
+| `run` | execute a `System` or `Schedule` once | `update`, `execute` |
+| `load` / `save` | (de)serialize manifest to / from disk | `read` / `write` (reserved for raw bytes) |
+| `inspect` / `snapshot` | produce a JSONL dump of current world state | `dump`, `print`, `debug` |
+| `new` | constructor; no parameters unless self-evident from type | `make`, `create`, `build` |
+
+### Concept-keyed reservations
+
+For concepts that cannot be derived from a Suffix + domain noun.
 
 | Concept | Canonical term | Allowed forms | Do not use | Notes |
 | --- | --- | --- | --- | --- |
+| 2D vector (f32 pair) | `Vec2` | — | `Vector2`, `V2`, `Pair` | Lives in `core::math`. |
+| World-space position | `Position` | — | `Pos`, `Location`, `Transform` | Newtype over `Vec2`; `Transform` reserved for v3 (rotation/scale). |
+| World-space linear velocity | `Velocity` | — | `Vel`, `Speed`, `LinearVelocity` | Newtype over `Vec2`; `Speed` is the scalar magnitude. |
+| Axis-aligned bounding box | `Aabb` | — | `AABB`, `BoundingBox`, `Box` | G.NAM.01 acronym-as-word. Field `half_extents: Vec2`. |
+| Animation clip + metadata | `Clip` | `AnimationClip` (cross-module docs) | `Anim`, `Track`, `Sequence` | Future fields extend `Clip`, not `Animator`. |
+| Animation playback state | `Animator` | — | `AnimationPlayer`, `AnimController` | Field `clip: Clip`, not `current`. |
+| Generational entity handle | `Entity` | — | `EntityHandle`, `EntityRef` | `{ index: u32, generation: u32 }`. |
+| Game world | `World` | — | `Universe`, `Scene`, `Registry` | Owns ECS storage and `TagRegistry`. |
+| Component marker trait | `Component` | — | `Data`, `Datum` | `'static + Send + Sync`. |
+| Tick schedule | `Schedule` | — | `Loop`, `Pipeline` | Ordered systems for one tick. |
+| Event bus channel enum | `Channel` | `Channel::{ Input, Command, Domain, Marker, Presentation, CommandAck, Snapshot }` | strings at the type level | JSONL serializes variants as `lower-kebab-case`. |
+| World-scoped singleton trait | `Resource` | — | `Singleton`, `Global`, `Config`, `Asset` | `'static + Send + Sync`; backs `TagRegistry`, `Gravity`, future per-game globals. `Asset` is reserved for v2+ disk-loaded data (textures, audio, animation), do not conflate. `Config` is misleading because resources mutate at runtime (`Time`, `Score`, `Rng`). |
+| Event-driven if-then unit of game logic | `Rule` | — | `Handler`, `Trigger`, `Reaction`, `Listener`, `Script`, `Behavior` | One file in `rules/*.toml`; `event + match + do` triple. |
 
 ## Adding Table Entries
 

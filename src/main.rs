@@ -1,3 +1,3 @@
 fn main() {
-    println!("Hello, world!");
+    // Wired to `cli::run` once Layer 7 (CLI subcommands) is implemented.
 }
