@@ -1,7 +1,7 @@
 use crate::ecs::component::Component;
 use crate::ecs::entity::Entity;
 use crate::ecs::error::Result;
-use crate::ecs::query::{QueryBuilder, QueryFetch, ReadOnlyQuery};
+use crate::ecs::query::{QueryBuilder, QueryFetch, QueryMutBuilder};
 use crate::ecs::resource::Resource;
 use crate::tag::registry::TagRegistry;
 
@@ -82,16 +82,16 @@ impl World {
 
     // ---- query ----
 
-    /// Read-only query. `Q` must be composed of `&T` only — the
-    /// `ReadOnlyQuery` bound rules out `&mut T`, which would be unsound
-    /// to hand out from a `&self` reference.
-    pub fn query<Q: QueryFetch + ReadOnlyQuery>(&self) -> QueryBuilder<'_, Q> {
+    /// Read-only query. `Q` is composed of `&T` fetches only.
+    #[must_use]
+    pub fn query<Q: QueryFetch>(&self) -> QueryBuilder<'_, Q> {
         todo!()
     }
 
-    /// Read/write query. Takes `&mut self` so mutable borrows of
-    /// components are sound.
-    pub fn query_mut<Q: QueryFetch>(&mut self) -> QueryBuilder<'_, Q> {
+    /// Mutable query for one component type. Takes `&mut self` so yielded
+    /// component borrows are tied to exclusive world access.
+    #[must_use]
+    pub fn query_mut<T: Component>(&mut self) -> QueryMutBuilder<'_, T> {
         todo!()
     }
 
@@ -147,12 +147,13 @@ pub struct EntityBuilder<'w> {
     _entity: Entity,
 }
 
-impl<'w> EntityBuilder<'w> {
+impl EntityBuilder<'_> {
     #[must_use]
     pub fn with<T: Component>(self, _component: T) -> Self {
         todo!()
     }
 
+    #[must_use]
     pub fn finish(self) -> Entity {
         todo!()
     }

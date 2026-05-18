@@ -57,9 +57,18 @@ flow for a player jump:
 
 ```jsonl
 {"channel":"input","type":"key_press","key":"Space"}
-{"channel":"domain","type":"player_jumped","actor":1}
-{"channel":"presentation","type":"play_animation","entity":1,"name":"jump","priority":5}
+{"channel":"domain","type":"player_jumped","actor":{"index":1,"generation":0}}
+{"channel":"presentation","type":"play_animation","entity":{"index":1,"generation":0},"clip":"jump","priority":5}
 ```
+
+The Rust payload types do not store `channel`; the runtime wraps every
+payload in a `BusEnvelope` before JSONL serialization. v0 wire shapes are
+object-shaped and match derived serde output:
+
+- `Entity` serializes as `{ "index": u32, "generation": u32 }`.
+- `Vec2` serializes as `{ "x": f32, "y": f32 }`.
+- `DomainEvent.payload` is an object flattened into the envelope; loaders
+  reject custom domain payloads that are not TOML/JSON objects.
 
 The seven channels:
 

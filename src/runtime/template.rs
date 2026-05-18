@@ -9,9 +9,8 @@ use crate::tag::set::TagSet;
 /// Tag names have been resolved to interned `TagId`s and packed into
 /// `TagSet` at load time, so spawning is a flat clone-and-attach.
 ///
-/// v0 carries the closed component set inline; v1's dynamic component
-/// schemas will replace `position` / `velocity` / `aabb` / `animator`
-/// with a `HashMap<TypeId, Box<dyn Any>>`.
+/// v0 carries the closed component set inline; a future dynamic
+/// component path will replace these fields with reflected storage.
 #[derive(Debug, Clone, Default)]
 pub struct Template {
     pub name: String,

@@ -37,7 +37,7 @@ for, and where it expects to go.
    "conflicting rules" lint is on the list. Confirm declaration order
    is acceptable for v0 instead of erroring out.
 3. **`Animator` placeholder semantics**: in v0 it stores
-   `{current, elapsed, speed, looping}` but `AnimationSystem` only
+   `{clip, elapsed, speed, looping}` but `AnimationSystem` only
    ticks `elapsed`. Should the presentation channel emit a synthetic
    `animation_finished` event for non-looping clips after a configured
    duration, even though no animation data exists? Plan: yes — keeps
@@ -52,7 +52,7 @@ for, and where it expects to go.
 Suffix patterns (`*Id`, `*Registry`, `*Set`, `*Engine`, `*Tx`/`*Rx`, `*Event`,
 `*Command`, `*Error`, `*Schema`), verb conventions, and concept reservations
 (`Vec2`, `Aabb`, `Position`, `Velocity`, `Clip`, `Animator`, `Entity`, `World`,
-`Component`, `Schedule`, `Channel`) live in [`.claude/rules/naming.md`](../../rules/naming.md).
+`Component`, `Schedule`, `Channel`, `Template`) live in [`.claude/rules/naming.md`](../../rules/naming.md).
 Compose new names from those tables; only fall back to adding a Concept-keyed
 reservation when a name cannot be derived from a Suffix + domain noun.
 

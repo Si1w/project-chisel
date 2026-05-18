@@ -11,8 +11,7 @@ pub struct GameSchema {
     pub schema_version: u32,
 
     /// Scene name loaded by `bootstrap`. Must match a `SceneSchema::name`
-    /// from `scenes/`. Defaults to `"main"`; CLI `chisel run --scene X`
-    /// can override at startup.
+    /// from `scenes/`. Defaults to `"main"`.
     #[serde(default = "default_main_scene")]
     pub main_scene: String,
 

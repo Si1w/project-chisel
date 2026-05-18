@@ -35,10 +35,11 @@ impl World {
     pub fn get<T: Component>(&self, e: Entity) -> Option<&T>;
     pub fn get_mut<T: Component>(&mut self, e: Entity) -> Option<&mut T>;
 
-    // Split query API: ReadOnlyQuery bound on the &self path rules out
-    // &mut T and prevents unsound mutable aliasing through &World.
-    pub fn query<Q: QueryFetch + ReadOnlyQuery>(&self) -> QueryBuilder<'_, Q>;
-    pub fn query_mut<Q: QueryFetch>(&mut self) -> QueryBuilder<'_, Q>;
+    // Read queries support `&T` and tuples of `&T`.
+    // Mutable queries are intentionally single-component in v0; tuple
+    // mutable queries wait until storage can prove disjoint borrows.
+    pub fn query<Q: QueryFetch>(&self) -> QueryBuilder<'_, Q>;
+    pub fn query_mut<T: Component>(&mut self) -> QueryMutBuilder<'_, T>;
 
     pub fn resource<R: Resource>(&self) -> Option<&R>;
     pub fn resource_mut<R: Resource>(&mut self) -> Option<&mut R>;
@@ -47,7 +48,7 @@ impl World {
 // ECS systems take &mut World only — invariant 1 keeps `&Bus` out of
 // `run`. Systems emit via `world.resource_mut::<EventQueue>()`.
 pub trait System: Send {
-    fn name(&self) -> &str;
+    fn name(&self) -> &'static str;
     fn run(&mut self, world: &mut World, ctx: &TickContext);
 }
 

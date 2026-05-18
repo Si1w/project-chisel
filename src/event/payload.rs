@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value as JsonValue;
+use serde_json::{Map as JsonMap, Value as JsonValue};
 
 use crate::ecs::entity::Entity;
 use crate::math::vec2::Vec2;
@@ -35,7 +35,7 @@ pub struct DomainEvent {
     #[serde(rename = "type")]
     pub name: String,
     #[serde(flatten)]
-    pub payload: JsonValue,
+    pub payload: JsonMap<String, JsonValue>,
 }
 
 impl DomainEvent {
@@ -55,7 +55,7 @@ impl DomainEvent {
     }
 
     #[must_use]
-    pub fn custom(_name: impl Into<String>, _payload: JsonValue) -> Self {
+    pub fn custom(_name: impl Into<String>, _payload: JsonMap<String, JsonValue>) -> Self {
         todo!()
     }
 }

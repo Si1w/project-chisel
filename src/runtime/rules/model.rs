@@ -125,9 +125,7 @@ impl RuleSet {
 
     #[must_use]
     pub fn rules_for(&self, event_name: &str) -> &[Rule] {
-        self.by_event
-            .get(event_name)
-            .map_or(&[], Vec::as_slice)
+        self.by_event.get(event_name).map_or(&[], Vec::as_slice)
     }
 
     #[must_use]

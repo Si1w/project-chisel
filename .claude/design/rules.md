@@ -72,7 +72,8 @@ Layout:
 ## v0 built-in events
 
 - `tick` — no parameters; fires once per tick.
-- `collision` — `a`, `b` are entities; `normal` is `[f32, f32]`.
+- `collision` — `a`, `b` are serialized `Entity` objects; `normal` is a
+  `Vec2` object (`{ x, y }`).
 
 ## v0 built-in actions
 
@@ -87,10 +88,10 @@ Layout:
 
 ## Match filter semantics
 
-`with = [...]` lists tag components that must be present on the matched
-entity. `without = [...]` lists tag components that must be absent.
-Component types are referenced by string in the manifest, mapped to Rust
-types via the v0 closed registry.
+`with = [...]` lists tag names that must be present on the matched entity.
+`without = [...]` lists tag names that must be absent. Tag names are
+interned into `TagId`s through the world-scoped `TagRegistry`; each entity
+stores them in one `TagSet` component.
 
 ## Failure semantics
 

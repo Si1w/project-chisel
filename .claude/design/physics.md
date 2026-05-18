@@ -16,10 +16,12 @@ For every tick:
    uniform grid is the v1 upgrade.
 3. **Narrow phase**: AABB-vs-AABB overlap. No SAT, no rotated boxes, no
    continuous collision.
-4. **Emit**: on overlap, publish to the `domain` channel:
+4. **Emit**: on overlap, push a domain event into the world's
+   `EventQueue`; the runtime drains and forwards it to the `domain`
+   channel:
 
    ```json
-   {"channel":"domain","type":"collision","a":<entity>,"b":<entity>,"normal":[nx,ny]}
+   {"channel":"domain","type":"collision","a":{"index":1,"generation":0},"b":{"index":2,"generation":0},"normal":{"x":0.0,"y":1.0}}
    ```
 
 5. **Resolve**: not done. Rules decide whether to reverse velocity,
@@ -28,19 +30,21 @@ For every tick:
 ## Trait
 
 ```rust
-pub trait PhysicsEngine {
-    fn step(&mut self, world: &mut World, bus: &BusTx, dt: f32);
-}
+pub trait PhysicsEngine: System + Send {}
 
 pub struct AabbEngine;
 
-impl PhysicsEngine for AabbEngine {
-    fn step(&mut self, world: &mut World, bus: &BusTx, dt: f32) {
+impl System for AabbEngine {
+    fn name(&self) -> &'static str { "physics.aabb" }
+
+    fn run(&mut self, world: &mut World, ctx: &TickContext) {
         // 1. integrate
         // 2. detect (O(n^2) pair scan)
-        // 3. publish Collision events
+        // 3. push Collision events into EventQueue
     }
 }
+
+impl PhysicsEngine for AabbEngine {}
 ```
 
 Selecting the engine in `game.toml`:

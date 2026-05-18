@@ -24,7 +24,7 @@ impl AabbEngine {
 }
 
 impl System for AabbEngine {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "physics.aabb"
     }
 

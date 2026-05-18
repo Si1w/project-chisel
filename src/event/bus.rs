@@ -41,8 +41,34 @@ impl Bus {
     ///
     /// `outbound_capacity`: per-subscriber broadcast lag tolerance.
     #[must_use]
-    pub fn new(_inbound_capacity: usize, _outbound_capacity: usize) -> (Self, BusEndpoints) {
-        todo!()
+    pub fn new(inbound_capacity: usize, outbound_capacity: usize) -> (Self, BusEndpoints) {
+        let (input_tx, input_rx) = mpsc::channel(inbound_capacity);
+        let (command_tx, command_rx) = mpsc::channel(inbound_capacity);
+        let (domain_tx, _) = broadcast::channel(outbound_capacity);
+        let (marker_tx, _) = broadcast::channel(outbound_capacity);
+        let (presentation_tx, _) = broadcast::channel(outbound_capacity);
+        let (command_ack_tx, _) = broadcast::channel(outbound_capacity);
+        let (snapshot_tx, _) = broadcast::channel(outbound_capacity);
+
+        (
+            Self {
+                input: InboundTx { inner: input_tx },
+                command: InboundTx { inner: command_tx },
+                domain: OutboundChannel { inner: domain_tx },
+                marker: OutboundChannel { inner: marker_tx },
+                presentation: OutboundChannel {
+                    inner: presentation_tx,
+                },
+                command_ack: OutboundChannel {
+                    inner: command_ack_tx,
+                },
+                snapshot: OutboundChannel { inner: snapshot_tx },
+            },
+            BusEndpoints {
+                input_rx: InboundRx { inner: input_rx },
+                command_rx: InboundRx { inner: command_rx },
+            },
+        )
     }
 }
 
@@ -58,8 +84,8 @@ impl<T> InboundTx<T> {
     ///
     /// Returns `BusError::Closed` if the matching `InboundRx` has been
     /// dropped.
-    pub async fn send(&self, _event: T) -> Result<(), BusError> {
-        todo!()
+    pub async fn send(&self, event: T) -> Result<(), BusError> {
+        self.inner.send(event).await.map_err(|_| BusError::Closed)
     }
 }
 
@@ -71,7 +97,7 @@ pub struct InboundRx<T> {
 
 impl<T> InboundRx<T> {
     pub async fn recv(&mut self) -> Option<T> {
-        todo!()
+        self.inner.recv().await
     }
 }
 
@@ -93,13 +119,18 @@ impl<T: Clone + Send + 'static> OutboundChannel<T> {
     /// # Errors
     ///
     /// Returns `BusError::Closed` when no subscribers remain.
-    pub fn emit(&self, _event: T) -> Result<(), BusError> {
-        todo!()
+    pub fn emit(&self, event: T) -> Result<(), BusError> {
+        self.inner
+            .send(event)
+            .map(|_| ())
+            .map_err(|_| BusError::Closed)
     }
 
     #[must_use]
     pub fn subscribe(&self) -> OutboundRx<T> {
-        todo!()
+        OutboundRx {
+            inner: self.inner.subscribe(),
+        }
     }
 }
 
@@ -114,6 +145,59 @@ impl<T: Clone + Send + 'static> OutboundRx<T> {
     /// this receiver caught up; the caller decides whether to reconnect.
     /// Returns `BusError::Closed` once all senders are dropped.
     pub async fn recv(&mut self) -> Result<T, BusError> {
-        todo!()
+        match self.inner.recv().await {
+            Ok(event) => Ok(event),
+            Err(broadcast::error::RecvError::Closed) => Err(BusError::Closed),
+            Err(broadcast::error::RecvError::Lagged(count)) => Err(BusError::Lagged(count)),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::event::payload::{AckStatus, CommandAckEvent, InputEvent};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn inbound_channel_round_trips_to_single_receiver() {
+        let (bus, mut endpoints) = Bus::new(4, 4);
+
+        bus.input
+            .send(InputEvent::KeyPress {
+                key: "Space".into(),
+            })
+            .await
+            .expect("receiver is alive");
+
+        let event = endpoints
+            .input_rx
+            .recv()
+            .await
+            .expect("event should arrive");
+
+        match event {
+            InputEvent::KeyPress { key } => assert_eq!(key, "Space"),
+            InputEvent::KeyRelease { key } => panic!("unexpected key release: {key}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn outbound_channel_broadcasts_to_subscriber() {
+        let (bus, _endpoints) = Bus::new(4, 4);
+        let mut rx = bus.command_ack.subscribe();
+
+        bus.command_ack
+            .emit(CommandAckEvent {
+                command_id: Some("cmd-1".into()),
+                status: AckStatus::Ok,
+                message: None,
+            })
+            .expect("subscriber is alive");
+
+        let event = rx.recv().await.expect("event should arrive");
+
+        assert_eq!(event.command_id.as_deref(), Some("cmd-1"));
+        assert_eq!(event.status, AckStatus::Ok);
     }
 }

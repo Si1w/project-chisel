@@ -18,7 +18,7 @@ pub struct TickContext {
 /// events to `Bus` after the tick.
 pub trait System: Send {
     /// Stable identifier used for logs and debug dumps.
-    fn name(&self) -> &str;
+    fn name(&self) -> &'static str;
 
     fn run(&mut self, world: &mut World, ctx: &TickContext);
 }

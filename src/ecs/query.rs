@@ -4,43 +4,26 @@ use crate::ecs::component::Component;
 use crate::ecs::entity::Entity;
 use crate::ecs::world::World;
 
-/// What a query reads / writes. The associated `Item` is yielded per
-/// iteration. Implemented for `&T`, `&mut T`, and tuples thereof.
+/// What a read-only query fetches. The associated `Item` is yielded per
+/// iteration. Implemented for `&T` and tuples thereof.
 pub trait QueryFetch: Sized {
     type Item<'w>;
 }
 
-/// Marker subtrait for fetches that only borrow components immutably.
-/// `World::query` requires this bound so a `&self` access can't smuggle
-/// out `&mut T` references.
-pub trait ReadOnlyQuery: QueryFetch {}
-
 impl<T: Component> QueryFetch for &T {
     type Item<'w> = &'w T;
 }
-impl<T: Component> ReadOnlyQuery for &T {}
-
-impl<T: Component> QueryFetch for &mut T {
-    type Item<'w> = &'w mut T;
-}
-// `&mut T` deliberately does NOT impl `ReadOnlyQuery`.
 
 impl<A: QueryFetch, B: QueryFetch> QueryFetch for (A, B) {
     type Item<'w> = (A::Item<'w>, B::Item<'w>);
 }
-impl<A: ReadOnlyQuery, B: ReadOnlyQuery> ReadOnlyQuery for (A, B) {}
 
 impl<A: QueryFetch, B: QueryFetch, C: QueryFetch> QueryFetch for (A, B, C) {
     type Item<'w> = (A::Item<'w>, B::Item<'w>, C::Item<'w>);
 }
-impl<A: ReadOnlyQuery, B: ReadOnlyQuery, C: ReadOnlyQuery> ReadOnlyQuery for (A, B, C) {}
 
 impl<A: QueryFetch, B: QueryFetch, C: QueryFetch, D: QueryFetch> QueryFetch for (A, B, C, D) {
     type Item<'w> = (A::Item<'w>, B::Item<'w>, C::Item<'w>, D::Item<'w>);
-}
-impl<A: ReadOnlyQuery, B: ReadOnlyQuery, C: ReadOnlyQuery, D: ReadOnlyQuery> ReadOnlyQuery
-    for (A, B, C, D)
-{
 }
 
 /// Type-level marker: entity must have component `T` but the query does
@@ -58,7 +41,7 @@ pub struct QueryBuilder<'w, Q: QueryFetch> {
     _q: PhantomData<Q>,
 }
 
-impl<'w, Q: QueryFetch> QueryBuilder<'w, Q> {
+impl<Q: QueryFetch> QueryBuilder<'_, Q> {
     #[must_use]
     pub fn with<T: Component>(self) -> Self {
         todo!()
@@ -66,6 +49,46 @@ impl<'w, Q: QueryFetch> QueryBuilder<'w, Q> {
 
     #[must_use]
     pub fn without<T: Component>(self) -> Self {
+        todo!()
+    }
+}
+
+/// Mutable query for one component type. v0 intentionally avoids tuple
+/// mutable queries until storage can prove disjoint component borrows.
+pub struct QueryMutBuilder<'w, T: Component> {
+    _world: &'w mut World,
+    _component: PhantomData<T>,
+}
+
+impl<T: Component> QueryMutBuilder<'_, T> {
+    #[must_use]
+    pub fn with<U: Component>(self) -> Self {
+        todo!()
+    }
+
+    #[must_use]
+    pub fn without<U: Component>(self) -> Self {
+        todo!()
+    }
+}
+
+impl<'w, T: Component + 'w> IntoIterator for QueryMutBuilder<'w, T> {
+    type Item = (Entity, &'w mut T);
+    type IntoIter = QueryMutIter<'w, T>;
+
+    fn into_iter(self) -> QueryMutIter<'w, T> {
+        todo!()
+    }
+}
+
+pub struct QueryMutIter<'w, T: Component> {
+    _phantom: PhantomData<(&'w mut (), T)>,
+}
+
+impl<'w, T: Component + 'w> Iterator for QueryMutIter<'w, T> {
+    type Item = (Entity, &'w mut T);
+
+    fn next(&mut self) -> Option<Self::Item> {
         todo!()
     }
 }

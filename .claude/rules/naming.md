@@ -115,6 +115,7 @@ For concepts that cannot be derived from a Suffix + domain noun.
 | Event bus channel enum | `Channel` | `Channel::{ Input, Command, Domain, Marker, Presentation, CommandAck, Snapshot }` | strings at the type level | JSONL serializes variants as `lower-kebab-case`. |
 | World-scoped singleton trait | `Resource` | — | `Singleton`, `Global`, `Config`, `Asset` | `'static + Send + Sync`; backs `TagRegistry`, `Gravity`, future per-game globals. `Asset` is reserved for v2+ disk-loaded data (textures, audio, animation), do not conflate. `Config` is misleading because resources mutate at runtime (`Time`, `Score`, `Rng`). |
 | Event-driven if-then unit of game logic | `Rule` | — | `Handler`, `Trigger`, `Reaction`, `Listener`, `Script`, `Behavior` | One file in `rules/*.toml`; `event + match + do` triple. |
+| Instantiable entity definition | `Template` | `Entity template` (docs) | `Archetype`, `Prefab`, `Prototype` | Loaded from `entities/*.toml`; stored in `TemplateStore`; scenes and `spawn` actions reference by name. |
 
 ## Adding Table Entries
 

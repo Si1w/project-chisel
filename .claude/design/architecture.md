@@ -13,8 +13,8 @@ just convention.
                                  │ load on startup / explicit reload
                                  ▼
 ┌────────────────────────────────────────────────────────────────┐
-│  Logic Layer (rule engine, async)                              │
-│  in:  subscribes to domain + marker events                     │
+│  Logic Layer (rule processor, sync between ticks)              │
+│  in:  drains domain + marker events from EventQueue            │
 │  out: (a) ECS world mutations  (b) presentation commands       │
 └─────┬───────────────────────────────────────────┬──────────────┘
       │ mutations                                 │ commands
@@ -23,7 +23,7 @@ just convention.
 │  ECS Layer (sync per tick)                                     │
 │  World • Components • Systems                                  │
 │  Systems communicate via World only — never via the Event Bus  │
-│  Some systems publish domain/marker events to the bus          │
+│  Some systems push domain/marker events into EventQueue        │
 └─────┬───────────────────────┬──────────────────────────────────┘
       │ domain events         │ marker events
       ▼                       ▼
@@ -51,9 +51,10 @@ These are enforced by crate boundaries and code review.
 1. **ECS systems do not subscribe to the event bus.** They consume world
    data via queries. Any external input arrives as component state, not
    as a bus subscription.
-2. **The logic layer does not directly invoke ECS systems.** It produces
-   exactly two kinds of output: component mutations applied to the world,
-   and presentation commands published to the bus.
+2. **The logic layer does not directly invoke ECS systems.** It runs between
+   ticks, drains the world's `EventQueue`, and produces exactly two kinds
+   of output: component mutations applied to the world, and presentation
+   commands published to the bus.
 3. **Bus traffic is segregated by channel.** Command events are not
    visible to rule subscriptions; rules subscribe to `domain` and
    `marker` only. See [rules.md](rules.md) for why.
@@ -63,9 +64,9 @@ These are enforced by crate boundaries and code review.
 | Layer | Owns | Does not own |
 | --- | --- | --- |
 | Authoring (TOML) | Source-of-truth game definition | Runtime state |
-| Logic (rules) | Cause → effect mapping for game events | Per-frame data, system scheduling |
+| Logic (rules) | Cause → effect mapping for queued game events | Per-frame data, system scheduling |
 | ECS | High-frequency data + mechanical work (integrate, sample, detect) | Game-rule decisions |
-| Event Bus | Inter-layer communication on `domain` / `marker` / `presentation` / etc. | Intra-ECS communication |
+| Event Bus | Runtime IO / observer fanout on `domain` / `marker` / `presentation` / etc. | Intra-ECS communication |
 | Input | Raw input → domain event translation | Game-rule decisions about input |
 
 ## Module layout

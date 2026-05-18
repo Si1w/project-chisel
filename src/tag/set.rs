@@ -26,7 +26,11 @@ impl TagSet {
     /// Panics if `id.0 >= 128`. Callers should obtain `TagId`s from
     /// `TagRegistry::intern`, which enforces the cap.
     pub fn insert(&mut self, id: TagId) -> bool {
-        assert!((id.0 as usize) < 128, "TagId {} exceeds u128 bitset cap", id.0);
+        assert!(
+            (id.0 as usize) < 128,
+            "TagId {} exceeds u128 bitset cap",
+            id.0
+        );
         let mask = 1u128 << id.0;
         let was_set = (self.0 & mask) != 0;
         self.0 |= mask;
@@ -75,8 +79,18 @@ impl TagSet {
     }
 
     /// Iterator over all set `TagId`s in ascending order.
+    #[must_use]
     pub fn iter(&self) -> TagSetIter {
         TagSetIter { bits: self.0 }
+    }
+}
+
+impl IntoIterator for &TagSet {
+    type Item = TagId;
+    type IntoIter = TagSetIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
     }
 }
 
@@ -91,7 +105,8 @@ impl Iterator for TagSetIter {
         if self.bits == 0 {
             return None;
         }
-        let id = self.bits.trailing_zeros() as u16;
+        let id =
+            u16::try_from(self.bits.trailing_zeros()).expect("u128 bit index always fits in u16");
         self.bits &= self.bits - 1;
         Some(TagId(id))
     }
