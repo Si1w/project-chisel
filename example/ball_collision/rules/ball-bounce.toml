@@ -1,0 +1,12 @@
+event = "collision"
+
+[match.a]
+with = ["Ball"]
+
+[match.b]
+with = ["Wall"]
+
+[[do]]
+action = "reverse_velocity"
+entity = "a"
+axis = "from_normal"

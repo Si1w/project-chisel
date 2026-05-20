@@ -1,0 +1,14 @@
+name = "Ball"
+tags = ["Ball"]
+
+[components.position]
+x = 0.0
+y = 0.0
+
+[components.velocity]
+x = 3.0
+y = 0.0
+
+[components.aabb.half_extents]
+x = 0.5
+y = 0.5

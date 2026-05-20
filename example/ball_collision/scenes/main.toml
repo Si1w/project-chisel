@@ -1,0 +1,7 @@
+name = "main"
+
+[[entities]]
+template = "Ball"
+
+[[entities]]
+template = "Wall"
