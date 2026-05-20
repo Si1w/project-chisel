@@ -139,6 +139,22 @@ pub struct OutboundRx<T> {
 }
 
 impl<T: Clone + Send + 'static> OutboundRx<T> {
+    /// Non-blocking receive from this subscriber.
+    ///
+    /// # Errors
+    ///
+    /// Returns `BusError::Lagged(n)` if `n` messages were dropped before
+    /// this receiver caught up. Returns `BusError::Closed` once all senders
+    /// are dropped.
+    pub fn try_recv(&mut self) -> Result<Option<T>, BusError> {
+        match self.inner.try_recv() {
+            Ok(event) => Ok(Some(event)),
+            Err(broadcast::error::TryRecvError::Empty) => Ok(None),
+            Err(broadcast::error::TryRecvError::Closed) => Err(BusError::Closed),
+            Err(broadcast::error::TryRecvError::Lagged(count)) => Err(BusError::Lagged(count)),
+        }
+    }
+
     /// # Errors
     ///
     /// Returns `BusError::Lagged(n)` if `n` messages were dropped before

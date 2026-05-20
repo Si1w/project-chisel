@@ -32,6 +32,9 @@ chisel inspect       [--query QUERY]
 chisel emit          <event> [--payload ...]    # routed via `simulate_input` semantics
 ```
 
+Current minimal `run` implementation requires `--max-ticks`; omitted
+`--max-ticks` becomes valid when the stdin command loop lands.
+
 Project codename (`chisel`) is provisional; the actual binary name is
 decided before v0 ships.
 
@@ -68,7 +71,7 @@ chisel add rule   ball-bounce \
 Runtime:
 
 ```bash
-chisel run --max-ticks 600 > session.jsonl
+chisel run . --max-ticks 600 > session.jsonl
 ```
 
 Step-driven (agent in the loop):

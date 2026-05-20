@@ -1,3 +1,3 @@
-fn main() {
-    // Wired to `cli::run` once Layer 7 (CLI subcommands) is implemented.
+fn main() -> anyhow::Result<()> {
+    chisel::cli::run_cli()
 }

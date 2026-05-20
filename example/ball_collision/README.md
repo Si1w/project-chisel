@@ -8,5 +8,10 @@ The intended runtime flow is:
 2. `RuleProcessor` matches `collision` where `a` has tag `Ball` and `b` has tag `Wall`.
 3. The rule reverses `a`'s velocity along the collision normal.
 
-This directory follows the v0 manifest layout. It is ready for `load_rules`
-and `bootstrap` once those runtime loaders are implemented.
+Run it from the repository root:
+
+```bash
+cargo run -- run example/ball_collision --dt 0.5 --max-ticks 1
+```
+
+Expected output includes one `domain` JSONL collision event.
