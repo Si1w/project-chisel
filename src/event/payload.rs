@@ -41,23 +41,48 @@ pub struct DomainEvent {
 impl DomainEvent {
     #[must_use]
     pub fn tick() -> Self {
-        todo!()
+        Self::custom("tick", JsonMap::new())
     }
 
     #[must_use]
-    pub fn collision(_a: Entity, _b: Entity, _normal: Vec2) -> Self {
-        todo!()
+    pub fn collision(a: Entity, b: Entity, normal: Vec2) -> Self {
+        let mut payload = JsonMap::new();
+        payload.insert("a".into(), entity_value(a));
+        payload.insert("b".into(), entity_value(b));
+        payload.insert("normal".into(), vec2_value(normal));
+        Self::custom("collision", payload)
     }
 
     #[must_use]
-    pub fn rule_action_failed(_rule: &str, _action_index: u32, _reason: &str) -> Self {
-        todo!()
+    pub fn rule_action_failed(rule: &str, action_index: u32, reason: &str) -> Self {
+        let mut payload = JsonMap::new();
+        payload.insert("rule".into(), JsonValue::from(rule));
+        payload.insert("action_index".into(), JsonValue::from(action_index));
+        payload.insert("reason".into(), JsonValue::from(reason));
+        Self::custom("rule_action_failed", payload)
     }
 
     #[must_use]
-    pub fn custom(_name: impl Into<String>, _payload: JsonMap<String, JsonValue>) -> Self {
-        todo!()
+    pub fn custom(name: impl Into<String>, payload: JsonMap<String, JsonValue>) -> Self {
+        Self {
+            name: name.into(),
+            payload,
+        }
     }
+}
+
+fn entity_value(entity: Entity) -> JsonValue {
+    let mut value = JsonMap::new();
+    value.insert("index".into(), JsonValue::from(entity.index));
+    value.insert("generation".into(), JsonValue::from(entity.generation));
+    JsonValue::Object(value)
+}
+
+fn vec2_value(vector: Vec2) -> JsonValue {
+    let mut value = JsonMap::new();
+    value.insert("x".into(), JsonValue::from(vector.x));
+    value.insert("y".into(), JsonValue::from(vector.y));
+    JsonValue::Object(value)
 }
 
 /// ECS animation system milestone notifications. v0 fires none; v2+ will.
@@ -108,4 +133,93 @@ pub enum SnapshotEvent {
         components: JsonValue,
     },
     EndSnapshot,
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::{Map as JsonMap, json};
+
+    use crate::event::channel::Channel;
+    use crate::event::envelope::BusEnvelope;
+
+    use super::*;
+
+    #[test]
+    fn tick_event_serializes_as_domain_type_only() {
+        let event = DomainEvent::tick();
+
+        let json = serde_json::to_value(BusEnvelope::new(Channel::Domain, &event))
+            .expect("domain event should serialize");
+
+        assert_eq!(json, json!({ "channel": "domain", "type": "tick" }));
+    }
+
+    #[test]
+    fn collision_event_serializes_entities_and_normal() {
+        let a = Entity {
+            index: 1,
+            generation: 0,
+        };
+        let b = Entity {
+            index: 2,
+            generation: 3,
+        };
+
+        let event = DomainEvent::collision(a, b, Vec2::new(0.0, 1.0));
+
+        let json = serde_json::to_value(BusEnvelope::new(Channel::Domain, &event))
+            .expect("domain event should serialize");
+
+        assert_eq!(
+            json,
+            json!({
+                "channel": "domain",
+                "type": "collision",
+                "a": { "index": 1, "generation": 0 },
+                "b": { "index": 2, "generation": 3 },
+                "normal": { "x": 0.0, "y": 1.0 }
+            })
+        );
+    }
+
+    #[test]
+    fn rule_action_failed_event_serializes_rule_failure_fields() {
+        let event = DomainEvent::rule_action_failed("bounce", 2, "missing velocity");
+
+        let json = serde_json::to_value(BusEnvelope::new(Channel::Domain, &event))
+            .expect("domain event should serialize");
+
+        assert_eq!(
+            json,
+            json!({
+                "channel": "domain",
+                "type": "rule_action_failed",
+                "rule": "bounce",
+                "action_index": 2,
+                "reason": "missing velocity"
+            })
+        );
+    }
+
+    #[test]
+    fn custom_event_preserves_name_and_object_payload() {
+        let mut payload = JsonMap::new();
+        payload.insert("score".into(), json!(7));
+        payload.insert("label".into(), json!("checkpoint"));
+
+        let event = DomainEvent::custom("score_changed", payload);
+
+        let json = serde_json::to_value(BusEnvelope::new(Channel::Domain, &event))
+            .expect("domain event should serialize");
+
+        assert_eq!(
+            json,
+            json!({
+                "channel": "domain",
+                "type": "score_changed",
+                "score": 7,
+                "label": "checkpoint"
+            })
+        );
+    }
 }
