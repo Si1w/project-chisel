@@ -32,9 +32,10 @@ pub struct Rule {
 /// Per-event-parameter entity filter.
 #[derive(Clone, Debug, Default)]
 pub struct MatchSpec {
-    /// Param names in declaration order. `ParamId(i).0 as usize` indexes
-    /// this vec; the string is used at runtime to look up the entity in
-    /// `event.payload`.
+    /// Param names in loader order. `load_rules` uses lexicographic order for
+    /// determinism because TOML match sections deserialize through a map.
+    /// `ParamId(i).0 as usize` indexes this vec; the string is used at runtime
+    /// to look up the entity in `event.payload`.
     pub params: Vec<String>,
 
     /// Filter for each param. Parallel to `params`.

@@ -74,6 +74,9 @@ Layout:
 - `tick` — no parameters; fires once per tick.
 - `collision` — `a`, `b` are serialized `Entity` objects; `normal` is a
   `Vec2` object (`{ x, y }`).
+- Custom domain event names are allowed. v0 does not maintain a global
+  event-name registry, so the loader validates TOML shape and action
+  bindings rather than rejecting unknown event strings.
 
 ## v0 built-in actions
 
@@ -113,4 +116,7 @@ authoring mistakes via the event stream.
   tag components.
 - No rule priorities; rules sharing an event run in lexicographic file
   order. v1 may add explicit priorities.
+- Match params are loaded in lexicographic name order for deterministic
+  `ParamId` assignment because the TOML schema stores `[match.<param>]`
+  sections in a map.
 - No rule-internal state; rules are pure event-to-action mappings.

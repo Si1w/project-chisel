@@ -8,7 +8,8 @@ use crate::runtime::rules::model::ReverseAxis;
 
 #[derive(Debug, Deserialize)]
 pub struct RuleSchema {
-    /// Domain or marker event name. Loader rejects unknown channels.
+    /// Event name consumed by the rule processor. v0 has no global event-name
+    /// registry, so custom domain event names are accepted.
     pub event: String,
 
     /// `[match.<param>]` sections. Empty for `tick` and other no-param
