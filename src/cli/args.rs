@@ -44,8 +44,8 @@ pub enum Command {
 
     /// Inject a simulated input event for testing.
     Emit {
+        event: String,
         #[arg(default_value = ".")]
         root: PathBuf,
-        event: String,
     },
 }

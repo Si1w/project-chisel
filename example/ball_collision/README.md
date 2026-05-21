@@ -32,3 +32,12 @@ cargo run -- step example/ball_collision 21
 
 Expected output includes `collision` and `bounced` domain events followed by a
 final `snapshot` where the `Ball` velocity is negative on the x axis.
+
+Simulate a key press through `input.toml`:
+
+```bash
+cargo run -- emit '{"type":"key_press","key":"Space"}' example/ball_collision
+```
+
+Expected output includes a `ball_input` domain event with the `Ball` entity
+bound as `actor`.

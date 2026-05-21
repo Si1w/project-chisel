@@ -12,6 +12,7 @@ use crate::event::payload::DomainEvent;
 use crate::event::queue::EventQueue;
 use crate::physics::aabb::AabbEngine;
 use crate::physics::gravity::Gravity;
+use crate::runtime::input::{InputMapper, load_input};
 use crate::runtime::rules::load::load_rules;
 use crate::runtime::rules::system::RuleProcessor;
 use crate::runtime::schema::entity::EntitySchema;
@@ -45,6 +46,7 @@ pub struct EngineState {
     pub schedule: Schedule,
     pub bus: Bus,
     pub bus_endpoints: BusEndpoints,
+    pub input_mapper: InputMapper,
     pub rule_processor: RuleProcessor,
 }
 
@@ -92,6 +94,7 @@ pub fn bootstrap(root: &Path) -> Result<EngineState> {
     world.insert_resource(templates);
 
     let rules = load_rules(&paths.rules_dir, &mut world)?;
+    let input_mapper = load_input(&paths.input_toml, &mut world)?;
     let rule_processor = RuleProcessor::new(rules);
     let (bus, bus_endpoints) = Bus::new(INBOUND_BUS_CAPACITY, OUTBOUND_BUS_CAPACITY);
 
@@ -101,6 +104,7 @@ pub fn bootstrap(root: &Path) -> Result<EngineState> {
         schedule,
         bus,
         bus_endpoints,
+        input_mapper,
         rule_processor,
     })
 }

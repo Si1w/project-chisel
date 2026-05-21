@@ -9,9 +9,12 @@ use serde::Serialize;
 use crate::cli::args::{Cli, Command};
 use crate::event::channel::Channel;
 use crate::event::envelope::BusEnvelope;
+use crate::event::payload::InputEvent;
+use crate::event::queue::EventQueue;
 use crate::runtime::bootstrap::bootstrap;
-use crate::runtime::run::run_ticks;
+use crate::runtime::run::{MAX_RULE_ITERATIONS, run_ticks};
 use crate::runtime::snapshot::snapshot_world;
+use crate::{ecs::schedule::TickContext, event::payload::DomainEvent};
 
 const DEFAULT_STEP_DT: f32 = 0.016;
 
@@ -70,10 +73,46 @@ pub fn run_command(cli: Cli, output: &mut impl Write) -> Result<()> {
             }
             Ok(())
         }
-        Command::New { .. } | Command::Emit { .. } => {
+        Command::Emit { root, event } => {
+            let mut state = bootstrap(&root)?;
+            let input = serde_json::from_str::<InputEvent>(&event)
+                .with_context(|| format!("parse input event JSON {event:?}"))?;
+            let mut domain_rx = state.bus.domain.subscribe();
+            let events = state.input_mapper.map(&state.world, &input)?;
+            {
+                let queue = state
+                    .world
+                    .resource_mut::<EventQueue>()
+                    .context("EventQueue resource is missing")?;
+                for event in events {
+                    queue.emit_domain(event);
+                }
+            }
+            let ctx = TickContext {
+                tick: 0,
+                dt: DEFAULT_STEP_DT,
+            };
+            state
+                .rule_processor
+                .process(&mut state.world, &state.bus, &ctx, MAX_RULE_ITERATIONS);
+            write_domain_queue(&mut domain_rx, output)?;
+            Ok(())
+        }
+        Command::New { .. } => {
             bail!("command is not implemented yet")
         }
     }
+}
+
+fn write_domain_queue(
+    domain_rx: &mut crate::event::bus::OutboundRx<DomainEvent>,
+    output: &mut impl Write,
+) -> Result<()> {
+    while let Some(event) = domain_rx.try_recv()? {
+        write_event(output, Channel::Domain, &event)?;
+    }
+
+    Ok(())
 }
 
 fn write_event<T: Serialize>(output: &mut impl Write, channel: Channel, event: &T) -> Result<()> {
@@ -162,6 +201,33 @@ mod tests {
             line.contains(r#""type":"entity""#)
                 && line.contains(r#""Ball""#)
                 && line.contains(r#""velocity":{"x":-3.0"#)
+        }));
+    }
+
+    #[test]
+    fn emit_command_maps_input_to_domain_jsonl() {
+        let cli = Cli {
+            command: Command::Emit {
+                root: PathBuf::from("example/ball_collision"),
+                event: r#"{"type":"key_press","key":"Space"}"#.into(),
+            },
+        };
+        let mut output = Vec::new();
+
+        run_command(cli, &mut output).expect("emit command should execute");
+
+        let output = String::from_utf8(output).expect("output should be utf8");
+        let events = output
+            .lines()
+            .map(serde_json::from_str::<serde_json::Value>)
+            .collect::<Result<Vec<_>, _>>()
+            .expect("output should be JSONL");
+        assert!(events.iter().any(|event| {
+            event.get("channel") == Some(&serde_json::json!("domain"))
+                && event.get("type") == Some(&serde_json::json!("ball_input"))
+                && event.get("source") == Some(&serde_json::json!("keyboard"))
+                && event.pointer("/actor/index").is_some()
+                && event.pointer("/actor/generation").is_some()
         }));
     }
 }

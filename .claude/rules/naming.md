@@ -72,6 +72,7 @@ from a pattern.**
 | `*Store` | World-scoped `Resource` indexed by name / id; read-mostly registry of authoring artifacts | `TemplateStore` |
 | `*Envelope` | Wire-format wrapper that injects routing metadata around a payload | `BusEnvelope` |
 | `*Processor` | Non-`System` per-tick component invoked by the runtime outside `Schedule` | `RuleProcessor` |
+| `*Mapper` | Runtime translator from one event category into another without owning per-tick execution | `InputMapper` |
 
 ### Verb Conventions
 

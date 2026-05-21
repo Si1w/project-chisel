@@ -69,6 +69,9 @@ object-shaped and match derived serde output:
 - `Vec2` serializes as `{ "x": f32, "y": f32 }`.
 - `DomainEvent.payload` is an object flattened into the envelope; loaders
   reject custom domain payloads that are not TOML/JSON objects.
+- `input.toml` maps raw `InputEvent` objects to domain events. Match
+  sections bind entities by tag filters, and `"$name"` strings in
+  `emit.payload` substitute the matched entity.
 
 The seven channels:
 

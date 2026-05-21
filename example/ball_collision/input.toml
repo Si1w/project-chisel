@@ -1,0 +1,14 @@
+[[map]]
+[map.trigger]
+kind = "key_press"
+key = "Space"
+
+[map.match.actor]
+with = ["Ball"]
+
+[map.emit]
+type = "ball_input"
+
+[map.emit.payload]
+actor = "$actor"
+source = "keyboard"

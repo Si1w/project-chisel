@@ -29,11 +29,15 @@ chisel rule export   [--format jsonl|toml]
 chisel run           [--dt 0.016] [--max-ticks N]
 chisel step          [N]
 chisel inspect       [--query QUERY]
-chisel emit          <event> [--payload ...]    # routed via `simulate_input` semantics
+chisel emit          <input-event-json> [root]   # routed through input.toml
 ```
 
 Current minimal `run` implementation requires `--max-ticks`; omitted
 `--max-ticks` becomes valid when the stdin command loop lands.
+Current minimal `emit` parses one `InputEvent` JSON object, applies
+`input.toml`, queues the resulting domain events, and drains the rule
+processor once. When the stdin command loop lands, this becomes the
+`command:simulate_input` path instead of a direct CLI shortcut.
 
 Project codename (`chisel`) is provisional; the actual binary name is
 decided before v0 ships.
@@ -48,7 +52,7 @@ decided before v0 ships.
 | `run` | Loads TOML | Spawns engine; loops `command:step` internally |
 | `step` | No | Yes (`command:step`) |
 | `inspect` | No | Yes (`command:inspect`); reads `snapshot` channel back |
-| `emit` | No | Yes — translated into a `simulate_input` command that walks the input → mapper → domain pipeline (does not bypass it) |
+| `emit` | No | Yes — translated into a `simulate_input` command that walks the input → mapper → domain pipeline (current minimal CLI executes that path directly) |
 
 ## Example session
 
@@ -79,6 +83,7 @@ Step-driven (agent in the loop):
 ```bash
 chisel step 1   # advance one tick; read JSONL from stdout
 chisel inspect  # dump world snapshot
+chisel emit '{"type":"key_press","key":"Space"}'
 ```
 
 ## CLI error contract
