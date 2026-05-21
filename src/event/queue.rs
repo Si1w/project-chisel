@@ -11,6 +11,7 @@ use crate::event::payload::{DomainEvent, MarkerEvent};
 /// Lives as a queue (not a buffer) so cascading is natural —
 /// `RuleProcessor` does `next_domain` -> run rules -> rule actions push
 /// more events to the back -> loop, with a hard `max_iterations` cap.
+/// Events beyond the cap stay queued for the next tick.
 ///
 /// `domain` and `marker` are separate FIFOs because rules subscribe to
 /// them as distinct event categories; in-channel order is preserved,
@@ -53,5 +54,10 @@ impl EventQueue {
     #[must_use]
     pub fn len(&self) -> usize {
         self.domain.len() + self.marker.len()
+    }
+
+    #[must_use]
+    pub fn domain_len(&self) -> usize {
+        self.domain.len()
     }
 }

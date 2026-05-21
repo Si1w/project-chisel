@@ -4,7 +4,7 @@ use crate::ecs::schedule::TickContext;
 use crate::event::payload::DomainEvent;
 use crate::runtime::bootstrap::EngineState;
 
-const MAX_RULE_ITERATIONS: u32 = 16;
+const MAX_RULE_ITERATIONS: u32 = 1024;
 
 /// Advance an engine state by a fixed number of ticks and return the domain
 /// events observed during those ticks.

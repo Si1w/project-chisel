@@ -74,6 +74,10 @@ Layout:
 - `tick` — no parameters; fires once per tick.
 - `collision` — `a`, `b` are serialized `Entity` objects; `normal` is a
   `Vec2` object (`{ x, y }`).
+- `rule_iteration_limit_reached` — diagnostic event published on the
+  domain bus when a `RuleProcessor::process` call reaches its
+  `max_iterations` cap while domain events remain queued. Payload:
+  `limit`, `remaining_domain_len`.
 - Custom domain event names are allowed. v0 does not maintain a global
   event-name registry, so the loader validates TOML shape and action
   bindings rather than rejecting unknown event strings.
@@ -120,3 +124,6 @@ authoring mistakes via the event stream.
   `ParamId` assignment because the TOML schema stores `[match.<param>]`
   sections in a map.
 - No rule-internal state; rules are pure event-to-action mappings.
+- Rule cascades are bounded per tick. Runtime defaults to
+  `max_iterations = 1024`; unprocessed domain events remain in
+  `EventQueue` for the next tick rather than being dropped.

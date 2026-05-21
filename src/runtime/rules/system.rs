@@ -39,20 +39,39 @@ impl RuleProcessor {
     /// `reverse_velocity`, `emit`, `despawn`, and `play_animation`).
     /// Marker events are forwarded only.
     ///
-    /// `max_iterations` cascade handling is deferred until its runtime
-    /// dependencies land.
+    /// At most `max_iterations` domain events are processed per call.
+    /// Remaining domain events stay in the queue for the next tick; a
+    /// `rule_iteration_limit_reached` diagnostic is published directly
+    /// to the domain bus when the limit is reached with queued domain
+    /// work still pending.
     ///
     /// # Panics
     ///
     /// Panics if the world's `EventQueue` resource has been removed.
-    pub fn process(&self, world: &mut World, bus: &Bus, _ctx: &TickContext, _max_iterations: u32) {
-        while let Some(event) = world
-            .resource_mut::<EventQueue>()
-            .expect("EventQueue is inserted by World::new")
-            .next_domain()
-        {
+    pub fn process(&self, world: &mut World, bus: &Bus, _ctx: &TickContext, max_iterations: u32) {
+        let mut processed = 0;
+        while processed < max_iterations {
+            let Some(event) = world
+                .resource_mut::<EventQueue>()
+                .expect("EventQueue is inserted by World::new")
+                .next_domain()
+            else {
+                break;
+            };
+            processed += 1;
             let _ = bus.domain.emit(event.clone());
             self.process_domain_event(world, bus, &event);
+        }
+        let remaining_domain_len = world
+            .resource::<EventQueue>()
+            .expect("EventQueue is inserted by World::new")
+            .domain_len();
+        if remaining_domain_len > 0 {
+            let remaining_domain_len = u64::try_from(remaining_domain_len).unwrap_or(u64::MAX);
+            let _ = bus.domain.emit(DomainEvent::rule_iteration_limit_reached(
+                max_iterations,
+                remaining_domain_len,
+            ));
         }
 
         while let Some(event) = world
@@ -419,6 +438,53 @@ mod tests {
             .expect("second domain event should arrive");
         assert_eq!(first.name, "first");
         assert_eq!(second.name, "second");
+    }
+
+    #[test]
+    fn process_stops_at_max_iterations_and_keeps_remaining_domain_events() {
+        let mut world = World::new();
+        world
+            .resource_mut::<EventQueue>()
+            .expect("EventQueue is inserted by World::new")
+            .emit_domain(DomainEvent::tick());
+
+        let mut rules = RuleSet::new();
+        rules.add(Rule {
+            id: RuleId("tick-to-next".into()),
+            event_name: "tick".into(),
+            match_spec: MatchSpec::default(),
+            actions: vec![Action::Emit {
+                event: "next".into(),
+                payload: json!({}),
+            }],
+        });
+        let processor = RuleProcessor::new(rules);
+        let (bus, _endpoints) = Bus::new(4, 4);
+        let mut domain_rx = bus.domain.subscribe();
+
+        processor.process(&mut world, &bus, &TickContext { tick: 1, dt: 0.0 }, 1);
+
+        assert_eq!(
+            world
+                .resource::<EventQueue>()
+                .expect("EventQueue is inserted by World::new")
+                .len(),
+            1
+        );
+        let forwarded = domain_rx
+            .try_recv()
+            .expect("processed domain event should arrive");
+        let limit = domain_rx
+            .try_recv()
+            .expect("limit diagnostic should arrive");
+
+        let forwarded = forwarded.expect("processed domain event should arrive");
+        let limit = limit.expect("limit diagnostic should arrive");
+
+        assert_eq!(forwarded.name, "tick");
+        assert_eq!(limit.name, "rule_iteration_limit_reached");
+        assert_eq!(limit.payload.get("limit"), Some(&json!(1)));
+        assert_eq!(limit.payload.get("remaining_domain_len"), Some(&json!(1)));
     }
 
     #[test]

@@ -63,6 +63,17 @@ impl DomainEvent {
     }
 
     #[must_use]
+    pub fn rule_iteration_limit_reached(limit: u32, remaining_domain_len: u64) -> Self {
+        let mut payload = JsonMap::new();
+        payload.insert("limit".into(), JsonValue::from(limit));
+        payload.insert(
+            "remaining_domain_len".into(),
+            JsonValue::from(remaining_domain_len),
+        );
+        Self::custom("rule_iteration_limit_reached", payload)
+    }
+
+    #[must_use]
     pub fn custom(name: impl Into<String>, payload: JsonMap<String, JsonValue>) -> Self {
         Self {
             name: name.into(),
