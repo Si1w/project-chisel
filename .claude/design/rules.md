@@ -74,6 +74,8 @@ Layout:
 - `tick` — no parameters; fires once per tick.
 - `collision` — `a`, `b` are serialized `Entity` objects; `normal` is a
   `Vec2` object (`{ x, y }`).
+- `reached` — marker event emitted by the animation system when an entity
+  reaches a named animation marker. Payload: `entity`, `marker`.
 - `rule_iteration_limit_reached` — diagnostic event published on the
   domain bus when a `RuleProcessor::process` call reaches its
   `max_iterations` cap while domain events remain queued. Payload:
@@ -127,3 +129,6 @@ authoring mistakes via the event stream.
 - Rule cascades are bounded per tick. Runtime defaults to
   `max_iterations = 1024`; unprocessed domain events remain in
   `EventQueue` for the next tick rather than being dropped.
+- Marker events are drained after domain events. Marker rules may emit
+  domain events, but those events stay queued until the next
+  `RuleProcessor::process` call.

@@ -1,4 +1,4 @@
-use serde_json::Value as JsonValue;
+use serde_json::{Map as JsonMap, Value as JsonValue};
 
 use crate::component::animation::{Animator, Clip};
 use crate::component::spatial::{Position, Velocity};
@@ -6,7 +6,7 @@ use crate::ecs::entity::Entity;
 use crate::ecs::schedule::TickContext;
 use crate::ecs::world::World;
 use crate::event::bus::Bus;
-use crate::event::payload::{DomainEvent, PresentationCommand};
+use crate::event::payload::{DomainEvent, MarkerEvent, PresentationCommand};
 use crate::event::queue::EventQueue;
 use crate::math::vec2::Vec2;
 use crate::runtime::rules::model::{Action, EntityMatch, ParamId, ReverseAxis, Rule, RuleSet};
@@ -37,7 +37,8 @@ impl RuleProcessor {
     /// `bus`, matched against loaded rules, and used to run the
     /// currently-supported rule actions (`spawn`, `set_velocity`,
     /// `reverse_velocity`, `emit`, `despawn`, and `play_animation`).
-    /// Marker events are forwarded only.
+    /// Marker events are forwarded to the marker bus, then matched
+    /// against rules through their marker type and payload.
     ///
     /// At most `max_iterations` domain events are processed per call.
     /// Remaining domain events stay in the queue for the next tick; a
@@ -60,7 +61,7 @@ impl RuleProcessor {
             };
             processed += 1;
             let _ = bus.domain.emit(event.clone());
-            self.process_domain_event(world, bus, &event);
+            self.process_rule_event(world, bus, &event);
         }
         let remaining_domain_len = world
             .resource::<EventQueue>()
@@ -79,11 +80,13 @@ impl RuleProcessor {
             .expect("EventQueue is inserted by World::new")
             .next_marker()
         {
-            let _ = bus.marker.emit(event);
+            let _ = bus.marker.emit(event.clone());
+            let rule_event = rule_event_from_marker(&event);
+            self.process_rule_event(world, bus, &rule_event);
         }
     }
 
-    fn process_domain_event(&self, world: &mut World, bus: &Bus, event: &DomainEvent) {
+    fn process_rule_event(&self, world: &mut World, bus: &Bus, event: &DomainEvent) {
         for rule in self.rules.rules_for(&event.name) {
             let Some(bindings) = bind_event(world, rule, event) else {
                 continue;
@@ -91,6 +94,24 @@ impl RuleProcessor {
             run_actions(world, bus, rule, &bindings, event);
         }
     }
+}
+
+fn rule_event_from_marker(event: &MarkerEvent) -> DomainEvent {
+    match event {
+        MarkerEvent::Reached { entity, marker } => {
+            let mut payload = JsonMap::new();
+            payload.insert("entity".into(), entity_value(*entity));
+            payload.insert("marker".into(), JsonValue::String(marker.clone()));
+            DomainEvent::custom("reached", payload)
+        }
+    }
+}
+
+fn entity_value(entity: Entity) -> JsonValue {
+    let mut value = JsonMap::new();
+    value.insert("index".into(), JsonValue::from(entity.index));
+    value.insert("generation".into(), JsonValue::from(entity.generation));
+    JsonValue::Object(value)
 }
 
 struct RuleBindings {
@@ -383,6 +404,85 @@ mod tests {
                 assert_eq!(marker, "landed");
             }
         }
+    }
+
+    #[tokio::test]
+    async fn process_runs_matching_marker_rule() {
+        let mut world = World::new();
+        let entity = world.spawn().finish();
+        world
+            .resource_mut::<EventQueue>()
+            .expect("EventQueue is inserted by World::new")
+            .emit_marker(MarkerEvent::Reached {
+                entity,
+                marker: "landed".into(),
+            });
+
+        let mut rules = RuleSet::new();
+        rules.add(Rule {
+            id: RuleId("marker-landed".into()),
+            event_name: "reached".into(),
+            match_spec: MatchSpec {
+                params: vec!["entity".into()],
+                filters: vec![EntityMatch::default()],
+            },
+            actions: vec![Action::Emit {
+                event: "landed".into(),
+                payload: json!({
+                    "who": "$entity",
+                    "marker": "landed"
+                }),
+            }],
+        });
+        let processor = RuleProcessor::new(rules);
+        let (bus, _endpoints) = Bus::new(4, 4);
+        let mut marker_rx = bus.marker.subscribe();
+        let mut domain_rx = bus.domain.subscribe();
+
+        processor.process(&mut world, &bus, &TickContext { tick: 1, dt: 0.0 }, 16);
+
+        let marker_event = marker_rx.recv().await.expect("marker event should arrive");
+        match marker_event {
+            MarkerEvent::Reached {
+                entity: actual,
+                marker,
+            } => {
+                assert_eq!(actual, entity);
+                assert_eq!(marker, "landed");
+            }
+        }
+        assert!(
+            domain_rx
+                .try_recv()
+                .expect("domain channel should stay open")
+                .is_none()
+        );
+        assert_eq!(
+            world
+                .resource::<EventQueue>()
+                .expect("EventQueue is inserted by World::new")
+                .len(),
+            1
+        );
+
+        processor.process(&mut world, &bus, &TickContext { tick: 2, dt: 0.0 }, 16);
+
+        let emitted = domain_rx
+            .recv()
+            .await
+            .expect("marker rule domain event should arrive");
+        assert_eq!(emitted.name, "landed");
+        assert_eq!(
+            emitted.payload.get("who"),
+            Some(&json!({ "index": entity.index, "generation": entity.generation }))
+        );
+        assert_eq!(emitted.payload.get("marker"), Some(&json!("landed")));
+        assert!(
+            world
+                .resource::<EventQueue>()
+                .expect("EventQueue is inserted by World::new")
+                .is_empty()
+        );
     }
 
     #[test]
