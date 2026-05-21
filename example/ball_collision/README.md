@@ -15,3 +15,11 @@ cargo run -- run example/ball_collision --dt 0.5 --max-ticks 1
 ```
 
 Expected output includes one `domain` JSONL collision event.
+
+Inspect the initial world state:
+
+```bash
+cargo run -- inspect example/ball_collision
+```
+
+Expected output includes `snapshot` JSONL for the `Ball` and `Wall` entities.

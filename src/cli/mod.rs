@@ -10,6 +10,7 @@ use crate::event::channel::Channel;
 use crate::event::envelope::BusEnvelope;
 use crate::runtime::bootstrap::bootstrap;
 use crate::runtime::run::run_ticks;
+use crate::runtime::snapshot::snapshot_world;
 
 /// Parse process arguments and execute the requested CLI command.
 ///
@@ -45,10 +46,21 @@ pub fn run_command(cli: Cli, output: &mut impl Write) -> Result<()> {
             }
             Ok(())
         }
-        Command::New { .. }
-        | Command::Step { .. }
-        | Command::Inspect { .. }
-        | Command::Emit { .. } => bail!("command is not implemented yet"),
+        Command::Inspect { root, query } => {
+            if query.is_some() {
+                bail!("inspect query is not implemented yet");
+            }
+            let state = bootstrap(&root)?;
+            let events = snapshot_world(&state.world, 0);
+            for event in events {
+                serde_json::to_writer(&mut *output, &BusEnvelope::new(Channel::Snapshot, &event))?;
+                writeln!(output)?;
+            }
+            Ok(())
+        }
+        Command::New { .. } | Command::Step { .. } | Command::Emit { .. } => {
+            bail!("command is not implemented yet")
+        }
     }
 }
 
@@ -77,5 +89,33 @@ mod tests {
         assert!(output.lines().any(|line| {
             line.contains(r#""channel":"domain""#) && line.contains(r#""type":"collision""#)
         }));
+    }
+
+    #[test]
+    fn inspect_command_writes_snapshot_jsonl() {
+        let cli = Cli {
+            command: Command::Inspect {
+                root: PathBuf::from("example/ball_collision"),
+                query: None,
+            },
+        };
+        let mut output = Vec::new();
+
+        run_command(cli, &mut output).expect("inspect command should execute");
+
+        let output = String::from_utf8(output).expect("output should be utf8");
+        assert!(output.lines().any(|line| {
+            line.contains(r#""channel":"snapshot""#) && line.contains(r#""type":"begin_snapshot""#)
+        }));
+        assert!(
+            output
+                .lines()
+                .any(|line| line.contains(r#""type":"entity""#) && line.contains(r#""Ball""#))
+        );
+        assert!(
+            output
+                .lines()
+                .any(|line| line.contains(r#""type":"end_snapshot""#))
+        );
     }
 }
