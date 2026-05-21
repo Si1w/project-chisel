@@ -4,6 +4,7 @@ use std::io::Write;
 
 use anyhow::{Context, Result, bail};
 use clap::Parser;
+use serde::Serialize;
 
 use crate::cli::args::{Cli, Command};
 use crate::event::channel::Channel;
@@ -11,6 +12,8 @@ use crate::event::envelope::BusEnvelope;
 use crate::runtime::bootstrap::bootstrap;
 use crate::runtime::run::run_ticks;
 use crate::runtime::snapshot::snapshot_world;
+
+const DEFAULT_STEP_DT: f32 = 0.016;
 
 /// Parse process arguments and execute the requested CLI command.
 ///
@@ -41,8 +44,18 @@ pub fn run_command(cli: Cli, output: &mut impl Write) -> Result<()> {
             let mut state = bootstrap(&root)?;
             let events = run_ticks(&mut state, dt, max_ticks)?;
             for event in events {
-                serde_json::to_writer(&mut *output, &BusEnvelope::new(Channel::Domain, &event))?;
-                writeln!(output)?;
+                write_event(output, Channel::Domain, &event)?;
+            }
+            Ok(())
+        }
+        Command::Step { root, count } => {
+            let mut state = bootstrap(&root)?;
+            let events = run_ticks(&mut state, DEFAULT_STEP_DT, u64::from(count))?;
+            for event in events {
+                write_event(output, Channel::Domain, &event)?;
+            }
+            for event in snapshot_world(&state.world, u64::from(count)) {
+                write_event(output, Channel::Snapshot, &event)?;
             }
             Ok(())
         }
@@ -53,15 +66,20 @@ pub fn run_command(cli: Cli, output: &mut impl Write) -> Result<()> {
             let state = bootstrap(&root)?;
             let events = snapshot_world(&state.world, 0);
             for event in events {
-                serde_json::to_writer(&mut *output, &BusEnvelope::new(Channel::Snapshot, &event))?;
-                writeln!(output)?;
+                write_event(output, Channel::Snapshot, &event)?;
             }
             Ok(())
         }
-        Command::New { .. } | Command::Step { .. } | Command::Emit { .. } => {
+        Command::New { .. } | Command::Emit { .. } => {
             bail!("command is not implemented yet")
         }
     }
+}
+
+fn write_event<T: Serialize>(output: &mut impl Write, channel: Channel, event: &T) -> Result<()> {
+    serde_json::to_writer(&mut *output, &BusEnvelope::new(channel, event))?;
+    writeln!(output)?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -117,5 +135,33 @@ mod tests {
                 .lines()
                 .any(|line| line.contains(r#""type":"end_snapshot""#))
         );
+    }
+
+    #[test]
+    fn step_command_writes_domain_and_snapshot_jsonl() {
+        let cli = Cli {
+            command: Command::Step {
+                root: PathBuf::from("example/ball_collision"),
+                count: 21,
+            },
+        };
+        let mut output = Vec::new();
+
+        run_command(cli, &mut output).expect("step command should execute");
+
+        let output = String::from_utf8(output).expect("output should be utf8");
+        assert!(output.lines().any(|line| {
+            line.contains(r#""channel":"domain""#) && line.contains(r#""type":"collision""#)
+        }));
+        assert!(output.lines().any(|line| {
+            line.contains(r#""channel":"snapshot""#)
+                && line.contains(r#""type":"begin_snapshot""#)
+                && line.contains(r#""tick":21"#)
+        }));
+        assert!(output.lines().any(|line| {
+            line.contains(r#""type":"entity""#)
+                && line.contains(r#""Ball""#)
+                && line.contains(r#""velocity":{"x":-3.0"#)
+        }));
     }
 }

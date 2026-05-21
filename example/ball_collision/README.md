@@ -23,3 +23,12 @@ cargo run -- inspect example/ball_collision
 ```
 
 Expected output includes `snapshot` JSONL for the `Ball` and `Wall` entities.
+
+Step far enough for the ball to reach the wall with the default `dt`:
+
+```bash
+cargo run -- step example/ball_collision 21
+```
+
+Expected output includes a `collision` domain event followed by a final
+`snapshot` where the `Ball` velocity is negative on the x axis.
