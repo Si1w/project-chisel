@@ -14,7 +14,7 @@ Run it from the repository root:
 cargo run -- run example/ball_collision --dt 0.5 --max-ticks 1
 ```
 
-Expected output includes one `domain` JSONL collision event.
+Expected output includes `collision` and `bounced` domain JSONL events.
 
 Inspect the initial world state:
 
@@ -30,5 +30,5 @@ Step far enough for the ball to reach the wall with the default `dt`:
 cargo run -- step example/ball_collision 21
 ```
 
-Expected output includes a `collision` domain event followed by a final
-`snapshot` where the `Ball` velocity is negative on the x axis.
+Expected output includes `collision` and `bounced` domain events followed by a
+final `snapshot` where the `Ball` velocity is negative on the x axis.

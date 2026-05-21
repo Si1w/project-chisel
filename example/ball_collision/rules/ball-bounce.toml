@@ -10,3 +10,11 @@ with = ["Wall"]
 action = "reverse_velocity"
 entity = "a"
 axis = "from_normal"
+
+[[do]]
+action = "emit"
+event = "bounced"
+
+[do.payload]
+who = "$a"
+against = "$b"

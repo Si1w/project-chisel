@@ -214,13 +214,19 @@ mod tests {
         let rule = &collision_rules[0];
         assert_eq!(rule.id.0, "ball-bounce");
         assert_eq!(rule.match_spec.params, vec!["a", "b"]);
-        assert_eq!(rule.actions.len(), 1);
+        assert_eq!(rule.actions.len(), 2);
         assert!(matches!(
             &rule.actions[0],
             Action::ReverseVelocity {
                 target,
                 axis: ReverseAxis::FromNormal
             } if target.0 == 0
+        ));
+        assert!(matches!(
+            &rule.actions[1],
+            Action::Emit { event, payload }
+                if event == "bounced"
+                    && payload.pointer("/who").and_then(JsonValue::as_str) == Some("$a")
         ));
 
         let ball = world

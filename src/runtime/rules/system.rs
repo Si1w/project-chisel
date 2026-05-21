@@ -33,12 +33,11 @@ impl RuleProcessor {
 
     /// Drains the `EventQueue` resource. Domain events are forwarded to
     /// `bus`, matched against loaded rules, and used to run the
-    /// currently-supported rule actions (`set_velocity` and
-    /// `reverse_velocity`). Marker events are forwarded only.
+    /// currently-supported rule actions (`set_velocity`,
+    /// `reverse_velocity`, and `emit`). Marker events are forwarded only.
     ///
-    /// `spawn`, `despawn`, `emit`, `play_animation`, and
-    /// `max_iterations` cascade handling are deferred until their
-    /// runtime dependencies land.
+    /// `spawn`, `despawn`, `play_animation`, and `max_iterations` cascade
+    /// handling are deferred until their runtime dependencies land.
     ///
     /// # Panics
     ///
@@ -73,6 +72,7 @@ impl RuleProcessor {
 }
 
 struct RuleBindings {
+    params: Vec<String>,
     entities: Vec<Entity>,
 }
 
@@ -80,9 +80,15 @@ impl RuleBindings {
     fn entity(&self, param: ParamId) -> Option<Entity> {
         self.entities.get(param.0 as usize).copied()
     }
+
+    fn entity_by_name(&self, name: &str) -> Option<Entity> {
+        let index = self.params.iter().position(|param| param == name)?;
+        self.entities.get(index).copied()
+    }
 }
 
 fn bind_event(world: &World, rule: &Rule, event: &DomainEvent) -> Option<RuleBindings> {
+    let mut params = Vec::with_capacity(rule.match_spec.params.len());
     let mut entities = Vec::with_capacity(rule.match_spec.params.len());
 
     for (index, param) in rule.match_spec.params.iter().enumerate() {
@@ -95,10 +101,11 @@ fn bind_event(world: &World, rule: &Rule, event: &DomainEvent) -> Option<RuleBin
         {
             return None;
         }
+        params.push(param.clone());
         entities.push(entity);
     }
 
-    Some(RuleBindings { entities })
+    Some(RuleBindings { params, entities })
 }
 
 fn entity_matches(world: &World, entity: Entity, filter: &EntityMatch) -> bool {
@@ -145,10 +152,20 @@ fn run_action(
                 .ok_or_else(|| format!("velocity component missing on entity {entity:?}"))?;
             reverse_velocity(velocity, *axis, event)
         }
-        Action::Spawn { .. }
-        | Action::Despawn { .. }
-        | Action::Emit { .. }
-        | Action::PlayAnimation { .. } => Err("action not implemented".into()),
+        Action::Emit { event, payload } => {
+            let payload = substitute_payload(payload, bindings)?;
+            let JsonValue::Object(payload) = payload else {
+                return Err("emit payload must be an object".into());
+            };
+            world
+                .resource_mut::<EventQueue>()
+                .expect("EventQueue is inserted by World::new")
+                .emit_domain(DomainEvent::custom(event.clone(), payload));
+            Ok(())
+        }
+        Action::Spawn { .. } | Action::Despawn { .. } | Action::PlayAnimation { .. } => {
+            Err("action not implemented".into())
+        }
     }
 }
 
@@ -156,6 +173,36 @@ fn bound_entity(bindings: &RuleBindings, target: ParamId) -> Result<Entity, Stri
     bindings
         .entity(target)
         .ok_or_else(|| format!("param {} is not bound", target.0))
+}
+
+fn substitute_payload(value: &JsonValue, bindings: &RuleBindings) -> Result<JsonValue, String> {
+    match value {
+        JsonValue::String(text) => {
+            if let Some(param) = text.strip_prefix('$') {
+                let entity = bindings
+                    .entity_by_name(param)
+                    .ok_or_else(|| format!("unknown emit binding {text:?}"))?;
+                serde_json::to_value(entity).map_err(|error| error.to_string())
+            } else {
+                Ok(value.clone())
+            }
+        }
+        JsonValue::Array(items) => {
+            let mut substituted = Vec::with_capacity(items.len());
+            for item in items {
+                substituted.push(substitute_payload(item, bindings)?);
+            }
+            Ok(JsonValue::Array(substituted))
+        }
+        JsonValue::Object(fields) => {
+            let mut substituted = serde_json::Map::new();
+            for (key, item) in fields {
+                substituted.insert(key.clone(), substitute_payload(item, bindings)?);
+            }
+            Ok(JsonValue::Object(substituted))
+        }
+        JsonValue::Null | JsonValue::Bool(_) | JsonValue::Number(_) => Ok(value.clone()),
+    }
 }
 
 fn emit_rule_action_failed(world: &mut World, rule: &Rule, action_index: usize, reason: &str) {
@@ -201,7 +248,7 @@ fn event_normal(event: &DomainEvent) -> Option<Vec2> {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::Map as JsonMap;
+    use serde_json::{Map as JsonMap, json};
 
     use crate::component::spatial::Velocity;
     use crate::event::payload::{DomainEvent, MarkerEvent};
@@ -502,5 +549,64 @@ mod tests {
                 .map(|velocity| velocity.0),
             Some(Vec2::new(7.0, 8.0))
         );
+    }
+
+    #[tokio::test]
+    async fn process_emits_domain_event_with_bound_entities() {
+        let mut world = World::new();
+        let actor = world.spawn().finish();
+        let other = world.spawn().finish();
+        world
+            .resource_mut::<EventQueue>()
+            .expect("EventQueue is inserted by World::new")
+            .emit_domain(DomainEvent::collision(actor, other, Vec2::new(1.0, 0.0)));
+
+        let mut rules = RuleSet::new();
+        rules.add(Rule {
+            id: RuleId("emit-bounced".into()),
+            event_name: "collision".into(),
+            match_spec: MatchSpec {
+                params: vec!["a".into(), "b".into()],
+                filters: vec![EntityMatch::default(), EntityMatch::default()],
+            },
+            actions: vec![Action::Emit {
+                event: "bounced".into(),
+                payload: json!({
+                    "who": "$a",
+                    "other": "$b",
+                    "label": "wall_hit",
+                    "nested": { "actor": "$a" },
+                    "items": ["$b", "literal"]
+                }),
+            }],
+        });
+        let processor = RuleProcessor::new(rules);
+        let (bus, _endpoints) = Bus::new(4, 4);
+        let mut domain_rx = bus.domain.subscribe();
+
+        processor.process(&mut world, &bus, &TickContext { tick: 1, dt: 0.0 }, 16);
+        drop(bus);
+
+        let original = domain_rx
+            .recv()
+            .await
+            .expect("original event should arrive");
+        let emitted = domain_rx.recv().await.expect("emitted event should arrive");
+
+        assert_eq!(original.name, "collision");
+        assert_eq!(emitted.name, "bounced");
+        assert_eq!(
+            emitted.payload.get("who"),
+            Some(&json!({ "index": actor.index, "generation": actor.generation }))
+        );
+        assert_eq!(
+            JsonValue::Object(emitted.payload.clone()).pointer("/nested/actor"),
+            Some(&json!({ "index": actor.index, "generation": actor.generation }))
+        );
+        assert_eq!(
+            JsonValue::Object(emitted.payload.clone()).pointer("/items/0"),
+            Some(&json!({ "index": other.index, "generation": other.generation }))
+        );
+        assert_eq!(emitted.payload.get("label"), Some(&json!("wall_hit")));
     }
 }
