@@ -2,7 +2,10 @@ use std::collections::HashMap;
 
 use crate::component::animation::Animator;
 use crate::component::spatial::{Aabb, Position, Velocity};
+use crate::ecs::entity::Entity;
+use crate::ecs::error::Result;
 use crate::ecs::resource::Resource;
+use crate::ecs::world::World;
 use crate::tag::set::TagSet;
 
 /// One instantiable entity template, loaded from `entities/*.toml`.
@@ -55,4 +58,29 @@ impl TemplateStore {
     pub fn is_empty(&self) -> bool {
         self.by_name.is_empty()
     }
+}
+
+/// Spawns one entity from an already-resolved template.
+///
+/// # Errors
+///
+/// Returns `CoreError::EntityNotFound` if the newly allocated entity
+/// cannot receive components.
+pub(crate) fn spawn_template(world: &mut World, template: Template) -> Result<Entity> {
+    let entity = world.spawn().finish();
+    world.insert(entity, template.tags)?;
+    if let Some(component) = template.position {
+        world.insert(entity, component)?;
+    }
+    if let Some(component) = template.velocity {
+        world.insert(entity, component)?;
+    }
+    if let Some(component) = template.aabb {
+        world.insert(entity, component)?;
+    }
+    if let Some(component) = template.animator {
+        world.insert(entity, component)?;
+    }
+
+    Ok(entity)
 }

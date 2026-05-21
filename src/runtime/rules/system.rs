@@ -1,6 +1,6 @@
 use serde_json::Value as JsonValue;
 
-use crate::component::spatial::Velocity;
+use crate::component::spatial::{Position, Velocity};
 use crate::ecs::entity::Entity;
 use crate::ecs::schedule::TickContext;
 use crate::ecs::world::World;
@@ -9,6 +9,7 @@ use crate::event::payload::DomainEvent;
 use crate::event::queue::EventQueue;
 use crate::math::vec2::Vec2;
 use crate::runtime::rules::model::{Action, EntityMatch, ParamId, ReverseAxis, Rule, RuleSet};
+use crate::runtime::template::{TemplateStore, spawn_template};
 use crate::tag::set::TagSet;
 
 /// Processes events from the `EventQueue` between ticks. **Not** a
@@ -33,12 +34,12 @@ impl RuleProcessor {
 
     /// Drains the `EventQueue` resource. Domain events are forwarded to
     /// `bus`, matched against loaded rules, and used to run the
-    /// currently-supported rule actions (`set_velocity`,
+    /// currently-supported rule actions (`spawn`, `set_velocity`,
     /// `reverse_velocity`, `emit`, and `despawn`). Marker events are
     /// forwarded only.
     ///
-    /// `spawn`, `play_animation`, and `max_iterations` cascade handling
-    /// are deferred until their runtime dependencies land.
+    /// `play_animation` and `max_iterations` cascade handling are
+    /// deferred until their runtime dependencies land.
     ///
     /// # Panics
     ///
@@ -168,7 +169,19 @@ fn run_action(
             let entity = bound_entity(bindings, *target)?;
             world.despawn(entity).map_err(|error| error.to_string())
         }
-        Action::Spawn { .. } | Action::PlayAnimation { .. } => Err("action not implemented".into()),
+        Action::Spawn { template, position } => {
+            let mut instance = world
+                .resource::<TemplateStore>()
+                .ok_or("template store missing")?
+                .get(template)
+                .ok_or_else(|| format!("unknown template {template:?}"))?
+                .clone();
+            instance.position = Some(Position(*position));
+            spawn_template(world, instance)
+                .map(|_| ())
+                .map_err(|error| error.to_string())
+        }
+        Action::PlayAnimation { .. } => Err("action not implemented".into()),
     }
 }
 
@@ -253,12 +266,13 @@ fn event_normal(event: &DomainEvent) -> Option<Vec2> {
 mod tests {
     use serde_json::{Map as JsonMap, json};
 
-    use crate::component::spatial::Velocity;
+    use crate::component::spatial::Aabb;
     use crate::event::payload::{DomainEvent, MarkerEvent};
     use crate::math::vec2::Vec2;
     use crate::runtime::rules::model::{
         Action, EntityMatch, MatchSpec, ParamId, ReverseAxis, Rule, RuleId,
     };
+    use crate::runtime::template::{Template, TemplateStore};
 
     use super::*;
 
@@ -511,6 +525,69 @@ mod tests {
 
         assert!(!world.is_alive(target));
         assert!(world.is_alive(other));
+    }
+
+    #[test]
+    fn process_spawns_template_at_action_position() {
+        let mut world = World::new();
+        let projectile = world
+            .tag_registry_mut()
+            .intern("Projectile")
+            .expect("tag should intern");
+        let mut tags = TagSet::new();
+        tags.insert(projectile);
+        let mut templates = TemplateStore::new();
+        templates.insert(Template {
+            name: "Projectile".into(),
+            tags,
+            position: Some(Position(Vec2::new(-1.0, -1.0))),
+            velocity: Some(Velocity(Vec2::new(0.0, 9.0))),
+            aabb: Some(Aabb {
+                half_extents: Vec2::new(0.5, 0.25),
+            }),
+            animator: None,
+        });
+        world.insert_resource(templates);
+        world
+            .resource_mut::<EventQueue>()
+            .expect("EventQueue is inserted by World::new")
+            .emit_domain(DomainEvent::tick());
+
+        let mut rules = RuleSet::new();
+        rules.add(Rule {
+            id: RuleId("spawn-projectile".into()),
+            event_name: "tick".into(),
+            match_spec: MatchSpec::default(),
+            actions: vec![Action::Spawn {
+                template: "Projectile".into(),
+                position: Vec2::new(5.0, 6.0),
+            }],
+        });
+        let processor = RuleProcessor::new(rules);
+        let (bus, _endpoints) = Bus::new(4, 4);
+
+        processor.process(&mut world, &bus, &TickContext { tick: 1, dt: 0.0 }, 16);
+
+        let spawned = world
+            .entities()
+            .find(|entity| {
+                world
+                    .get::<TagSet>(*entity)
+                    .is_some_and(|tags| tags.contains(projectile))
+            })
+            .expect("spawn action should create tagged entity");
+        assert_eq!(
+            world.get::<Position>(spawned).map(|position| position.0),
+            Some(Vec2::new(5.0, 6.0))
+        );
+        assert_eq!(
+            world.get::<Velocity>(spawned).map(|velocity| velocity.0),
+            Some(Vec2::new(0.0, 9.0))
+        );
+        assert_eq!(
+            world.get::<Aabb>(spawned).map(|aabb| aabb.half_extents),
+            Some(Vec2::new(0.5, 0.25))
+        );
     }
 
     #[tokio::test]

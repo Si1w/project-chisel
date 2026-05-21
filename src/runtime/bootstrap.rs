@@ -18,7 +18,7 @@ use crate::runtime::schema::entity::EntitySchema;
 use crate::runtime::schema::game::GameSchema;
 use crate::runtime::schema::paths::ManifestPaths;
 use crate::runtime::schema::scene::{SceneEntitySchema, SceneSchema};
-use crate::runtime::template::{Template, TemplateStore};
+use crate::runtime::template::{Template, TemplateStore, spawn_template};
 use crate::tag::set::TagSet;
 
 const SUPPORTED_SCHEMA_VERSION: u32 = 1;
@@ -202,21 +202,7 @@ fn spawn_scene_entity(
         .with_context(|| format!("unknown template {:?}", scene_entity.template))?
         .clone();
     apply_components(&mut template, &scene_entity.overrides)?;
-
-    let entity = world.spawn().finish();
-    world.insert(entity, template.tags)?;
-    if let Some(component) = template.position {
-        world.insert(entity, component)?;
-    }
-    if let Some(component) = template.velocity {
-        world.insert(entity, component)?;
-    }
-    if let Some(component) = template.aabb {
-        world.insert(entity, component)?;
-    }
-    if let Some(component) = template.animator {
-        world.insert(entity, component)?;
-    }
+    spawn_template(world, template)?;
 
     Ok(())
 }
