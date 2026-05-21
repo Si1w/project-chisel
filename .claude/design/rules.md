@@ -87,7 +87,7 @@ Layout:
 | `spawn` | `template`, `position` | Spawn an entity from a template. |
 | `despawn` | `entity` | Remove `entity`. |
 | `emit` | `event`, `payload` | Publish a `domain` event. |
-| `play_animation` | `entity`, `name`, `priority` | Publish a `presentation` command and set `Animator`. |
+| `play_animation` | `entity`, `clip`, `priority` | Publish a `presentation` command and set `Animator`. |
 
 ## Match filter semantics
 

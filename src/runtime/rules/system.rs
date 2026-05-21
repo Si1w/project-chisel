@@ -1,11 +1,12 @@
 use serde_json::Value as JsonValue;
 
+use crate::component::animation::{Animator, Clip};
 use crate::component::spatial::{Position, Velocity};
 use crate::ecs::entity::Entity;
 use crate::ecs::schedule::TickContext;
 use crate::ecs::world::World;
 use crate::event::bus::Bus;
-use crate::event::payload::DomainEvent;
+use crate::event::payload::{DomainEvent, PresentationCommand};
 use crate::event::queue::EventQueue;
 use crate::math::vec2::Vec2;
 use crate::runtime::rules::model::{Action, EntityMatch, ParamId, ReverseAxis, Rule, RuleSet};
@@ -35,11 +36,11 @@ impl RuleProcessor {
     /// Drains the `EventQueue` resource. Domain events are forwarded to
     /// `bus`, matched against loaded rules, and used to run the
     /// currently-supported rule actions (`spawn`, `set_velocity`,
-    /// `reverse_velocity`, `emit`, and `despawn`). Marker events are
-    /// forwarded only.
+    /// `reverse_velocity`, `emit`, `despawn`, and `play_animation`).
+    /// Marker events are forwarded only.
     ///
-    /// `play_animation` and `max_iterations` cascade handling are
-    /// deferred until their runtime dependencies land.
+    /// `max_iterations` cascade handling is deferred until its runtime
+    /// dependencies land.
     ///
     /// # Panics
     ///
@@ -51,7 +52,7 @@ impl RuleProcessor {
             .next_domain()
         {
             let _ = bus.domain.emit(event.clone());
-            self.process_domain_event(world, &event);
+            self.process_domain_event(world, bus, &event);
         }
 
         while let Some(event) = world
@@ -63,12 +64,12 @@ impl RuleProcessor {
         }
     }
 
-    fn process_domain_event(&self, world: &mut World, event: &DomainEvent) {
+    fn process_domain_event(&self, world: &mut World, bus: &Bus, event: &DomainEvent) {
         for rule in self.rules.rules_for(&event.name) {
             let Some(bindings) = bind_event(world, rule, event) else {
                 continue;
             };
-            run_actions(world, rule, &bindings, event);
+            run_actions(world, bus, rule, &bindings, event);
         }
     }
 }
@@ -123,9 +124,15 @@ fn parse_entity(value: &JsonValue) -> Option<Entity> {
     serde_json::from_value(value.clone()).ok()
 }
 
-fn run_actions(world: &mut World, rule: &Rule, bindings: &RuleBindings, event: &DomainEvent) {
+fn run_actions(
+    world: &mut World,
+    bus: &Bus,
+    rule: &Rule,
+    bindings: &RuleBindings,
+    event: &DomainEvent,
+) {
     for (action_index, action) in rule.actions.iter().enumerate() {
-        if let Err(reason) = run_action(world, action, bindings, event) {
+        if let Err(reason) = run_action(world, bus, action, bindings, event) {
             emit_rule_action_failed(world, rule, action_index, &reason);
             break;
         }
@@ -134,6 +141,7 @@ fn run_actions(world: &mut World, rule: &Rule, bindings: &RuleBindings, event: &
 
 fn run_action(
     world: &mut World,
+    bus: &Bus,
     action: &Action,
     bindings: &RuleBindings,
     event: &DomainEvent,
@@ -181,7 +189,30 @@ fn run_action(
                 .map(|_| ())
                 .map_err(|error| error.to_string())
         }
-        Action::PlayAnimation { .. } => Err("action not implemented".into()),
+        Action::PlayAnimation {
+            target,
+            clip,
+            priority,
+        } => {
+            let entity = bound_entity(bindings, *target)?;
+            world
+                .insert(
+                    entity,
+                    Animator {
+                        clip: Clip { name: clip.clone() },
+                        elapsed: 0.0,
+                        speed: 1.0,
+                        looping: false,
+                    },
+                )
+                .map_err(|error| error.to_string())?;
+            let _ = bus.presentation.emit(PresentationCommand::PlayAnimation {
+                entity,
+                clip: clip.clone(),
+                priority: *priority,
+            });
+            Ok(())
+        }
     }
 }
 
@@ -266,8 +297,9 @@ fn event_normal(event: &DomainEvent) -> Option<Vec2> {
 mod tests {
     use serde_json::{Map as JsonMap, json};
 
+    use crate::component::animation::Animator;
     use crate::component::spatial::Aabb;
-    use crate::event::payload::{DomainEvent, MarkerEvent};
+    use crate::event::payload::{DomainEvent, MarkerEvent, PresentationCommand};
     use crate::math::vec2::Vec2;
     use crate::runtime::rules::model::{
         Action, EntityMatch, MatchSpec, ParamId, ReverseAxis, Rule, RuleId,
@@ -588,6 +620,61 @@ mod tests {
             world.get::<Aabb>(spawned).map(|aabb| aabb.half_extents),
             Some(Vec2::new(0.5, 0.25))
         );
+    }
+
+    #[tokio::test]
+    async fn process_plays_animation_for_bound_entity() {
+        let mut world = World::new();
+        let target = world.spawn().finish();
+        let other = world.spawn().finish();
+        world
+            .resource_mut::<EventQueue>()
+            .expect("EventQueue is inserted by World::new")
+            .emit_domain(DomainEvent::collision(target, other, Vec2::new(1.0, 0.0)));
+
+        let mut rules = RuleSet::new();
+        rules.add(Rule {
+            id: RuleId("play-hit".into()),
+            event_name: "collision".into(),
+            match_spec: MatchSpec {
+                params: vec!["a".into(), "b".into()],
+                filters: vec![EntityMatch::default(), EntityMatch::default()],
+            },
+            actions: vec![Action::PlayAnimation {
+                target: ParamId(0),
+                clip: "hit".into(),
+                priority: 7,
+            }],
+        });
+        let processor = RuleProcessor::new(rules);
+        let (bus, _endpoints) = Bus::new(4, 4);
+        let mut presentation_rx = bus.presentation.subscribe();
+
+        processor.process(&mut world, &bus, &TickContext { tick: 1, dt: 0.0 }, 16);
+
+        let animator = world
+            .get::<Animator>(target)
+            .expect("play_animation should set Animator");
+        assert_eq!(animator.clip.name, "hit");
+        assert!((animator.elapsed - 0.0).abs() < f32::EPSILON);
+        assert!((animator.speed - 1.0).abs() < f32::EPSILON);
+        assert!(!animator.looping);
+
+        let command = presentation_rx
+            .recv()
+            .await
+            .expect("presentation command should arrive");
+        match command {
+            PresentationCommand::PlayAnimation {
+                entity,
+                clip,
+                priority,
+            } => {
+                assert_eq!(entity, target);
+                assert_eq!(clip, "hit");
+                assert_eq!(priority, 7);
+            }
+        }
     }
 
     #[tokio::test]
