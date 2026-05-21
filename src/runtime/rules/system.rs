@@ -34,10 +34,11 @@ impl RuleProcessor {
     /// Drains the `EventQueue` resource. Domain events are forwarded to
     /// `bus`, matched against loaded rules, and used to run the
     /// currently-supported rule actions (`set_velocity`,
-    /// `reverse_velocity`, and `emit`). Marker events are forwarded only.
+    /// `reverse_velocity`, `emit`, and `despawn`). Marker events are
+    /// forwarded only.
     ///
-    /// `spawn`, `despawn`, `play_animation`, and `max_iterations` cascade
-    /// handling are deferred until their runtime dependencies land.
+    /// `spawn`, `play_animation`, and `max_iterations` cascade handling
+    /// are deferred until their runtime dependencies land.
     ///
     /// # Panics
     ///
@@ -163,9 +164,11 @@ fn run_action(
                 .emit_domain(DomainEvent::custom(event.clone(), payload));
             Ok(())
         }
-        Action::Spawn { .. } | Action::Despawn { .. } | Action::PlayAnimation { .. } => {
-            Err("action not implemented".into())
+        Action::Despawn { target } => {
+            let entity = bound_entity(bindings, *target)?;
+            world.despawn(entity).map_err(|error| error.to_string())
         }
+        Action::Spawn { .. } | Action::PlayAnimation { .. } => Err("action not implemented".into()),
     }
 }
 
@@ -479,6 +482,35 @@ mod tests {
             world.get::<Velocity>(target).map(|velocity| velocity.0),
             Some(Vec2::new(-3.0, 4.0))
         );
+    }
+
+    #[test]
+    fn process_despawns_bound_entity() {
+        let mut world = World::new();
+        let target = world.spawn().finish();
+        let other = world.spawn().finish();
+        world
+            .resource_mut::<EventQueue>()
+            .expect("EventQueue is inserted by World::new")
+            .emit_domain(DomainEvent::collision(target, other, Vec2::new(1.0, 0.0)));
+
+        let mut rules = RuleSet::new();
+        rules.add(Rule {
+            id: RuleId("despawn-target".into()),
+            event_name: "collision".into(),
+            match_spec: MatchSpec {
+                params: vec!["a".into(), "b".into()],
+                filters: vec![EntityMatch::default(), EntityMatch::default()],
+            },
+            actions: vec![Action::Despawn { target: ParamId(0) }],
+        });
+        let processor = RuleProcessor::new(rules);
+        let (bus, _endpoints) = Bus::new(4, 4);
+
+        processor.process(&mut world, &bus, &TickContext { tick: 1, dt: 0.0 }, 16);
+
+        assert!(!world.is_alive(target));
+        assert!(world.is_alive(other));
     }
 
     #[tokio::test]
