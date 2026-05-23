@@ -33,6 +33,17 @@ cargo run -- step example/ball_collision 21
 Expected output includes `collision` and `bounced` domain events followed by a
 final `snapshot` where the `Ball` velocity is negative on the x axis.
 
+Run a persistent JSONL session from stdin:
+
+```bash
+printf '%s\n' \
+  '{"channel":"command","type":"step","count":21}' \
+  '{"channel":"command","type":"inspect","query":null}' \
+  | cargo run -- run example/ball_collision
+```
+
+Expected output includes `domain`, `snapshot`, and `command-ack` JSONL records.
+
 Simulate a key press through `input.toml`:
 
 ```bash

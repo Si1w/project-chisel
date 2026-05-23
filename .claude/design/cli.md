@@ -26,18 +26,20 @@ chisel rule export   [--format jsonl|toml]
 
 # Runtime — emit command events into the engine
 
-chisel run           [--dt 0.016] [--max-ticks N]
+chisel run           [root] [--dt 0.016] [--max-ticks N]
 chisel step          [N]
 chisel inspect       [--query QUERY]
 chisel emit          <input-event-json> [root]   # routed through input.toml
 ```
 
-Current minimal `run` implementation requires `--max-ticks`; omitted
-`--max-ticks` becomes valid when the stdin command loop lands.
+With `--max-ticks`, `run` is batch mode: it advances the engine and exits.
+Without `--max-ticks`, `run` is persistent JSONL session mode: it reads
+newline-delimited `input` / `command` records from stdin and writes
+newline-delimited output records to stdout until stdin reaches EOF.
 Current minimal `emit` parses one `InputEvent` JSON object, applies
 `input.toml`, queues the resulting domain events, and drains the rule
-processor once. When the stdin command loop lands, this becomes the
-`command:simulate_input` path instead of a direct CLI shortcut.
+processor once. Session mode exposes the same path through
+`command:simulate_input`.
 
 Project codename (`chisel`) is provisional; the actual binary name is
 decided before v0 ships.
@@ -76,6 +78,10 @@ Runtime:
 
 ```bash
 chisel run . --max-ticks 600 > session.jsonl
+printf '%s\n' \
+  '{"channel":"command","type":"step","count":1}' \
+  '{"channel":"command","type":"inspect","query":null}' \
+  | chisel run .
 ```
 
 Step-driven (agent in the loop):

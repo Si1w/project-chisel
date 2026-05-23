@@ -88,6 +88,11 @@ The seven channels:
 In v0 all channels mux through stdin/stdout. Splitting to separate file
 descriptors is deferred to v1.
 
+In persistent session mode, stdin is the append-only command/input source
+and stdout is the append-only observation stream. The engine writes
+domain, marker, presentation, command-ack, and snapshot records; clients
+read those records and decide what to append next.
+
 ## Replay model
 
 Recording the JSONL stream lets the engine replay a session
