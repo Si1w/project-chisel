@@ -68,6 +68,7 @@ from a pattern.**
 | `*Command` | Control-plane or presentation directive | `PresentationCommand` |
 | `*Error` | Per-crate error enum (`thiserror`) | `CoreError`, `PhysicsError`, `RuntimeError` |
 | `*Schema` | Manifest schema struct (`serde::Deserialize` target); format-agnostic | `GameSchema`, `RuleSchema`, `InputSchema` |
+| `*Format` | CLI output-shape selector; does not change domain behavior | `DiagnosticFormat` |
 | `*Queue` | World-scoped FIFO (`VecDeque`-backed) drained per-tick; `Resource` | `EventQueue` |
 | `*Store` | World-scoped `Resource` indexed by name / id; read-mostly registry of authoring artifacts | `TemplateStore` |
 | `*Envelope` | Wire-format wrapper that injects routing metadata around a payload | `BusEnvelope` |
@@ -113,7 +114,7 @@ For concepts that cannot be derived from a Suffix + domain noun.
 | Game world | `World` | — | `Universe`, `Scene`, `Registry` | Owns ECS storage and `TagRegistry`. |
 | Component marker trait | `Component` | — | `Data`, `Datum` | `'static + Send + Sync`. |
 | Tick schedule | `Schedule` | — | `Loop`, `Pipeline` | Ordered systems for one tick. |
-| Event bus channel enum | `Channel` | `Channel::{ Input, Command, Domain, Marker, Presentation, CommandAck, Snapshot }` | strings at the type level | JSONL serializes variants as `lower-kebab-case`. |
+| Event bus channel enum | `Channel` | `Channel::{ Diagnostic, Input, Command, Domain, Marker, Presentation, CommandAck, Snapshot }` | strings at the type level | JSONL serializes variants as `lower-kebab-case`. |
 | World-scoped singleton trait | `Resource` | — | `Singleton`, `Global`, `Config`, `Asset` | `'static + Send + Sync`; backs `TagRegistry`, `Gravity`, future per-game globals. `Asset` is reserved for v2+ disk-loaded data (textures, audio, animation), do not conflate. `Config` is misleading because resources mutate at runtime (`Time`, `Score`, `Rng`). |
 | Event-driven if-then unit of game logic | `Rule` | — | `Handler`, `Trigger`, `Reaction`, `Listener`, `Script`, `Behavior` | One file in `rules/*.toml`; `event + match + do` triple. |
 | Instantiable entity definition | `Template` | `Entity template` (docs) | `Archetype`, `Prefab`, `Prototype` | Loaded from `entities/*.toml`; stored in `TemplateStore`; scenes and `spawn` actions reference by name. |

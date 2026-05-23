@@ -1,8 +1,9 @@
 # CLI
 
-`clap`'s derive macros. Subcommands fall into two groups: **authoring**
-(edit TOML files on disk) and **runtime** (drive the engine and read its
-JSONL stream).
+`clap`'s derive macros. Subcommands fall into five groups: **authoring**
+(edit TOML files on disk), **compiler** (validate/lower TOML source),
+**runtime launchers** (instantiate and run), **session commands** (JSONL
+records for a running engine), and **convenience wrappers**.
 
 The CLI is the only authoring interface. There is no REPL, no TUI, no
 scripting language. The CLI is a thin layer over the runtime crate;
@@ -24,13 +25,26 @@ chisel add input     <id> --key KEY --emit EVENT
 chisel rule import   <file.jsonl>
 chisel rule export   [--format jsonl|toml]
 
-# Runtime — emit command events into the engine
+# Compiler — validate/lower TOML source without advancing time
+
+chisel compile       [root] [--format human|jsonl]
+
+# Runtime launchers — instantiate the engine
 
 chisel run           [root] [--dt 0.016] [--max-ticks N]
-chisel step          [N]
-chisel inspect       [--query QUERY]
-chisel emit          <input-event-json> [root]   # routed through input.toml
+chisel play          [root] [--dt 0.016] [--width 800] [--height 600] # planned
+
+# Convenience wrappers — short-lived runtime sessions
+
+chisel step          [root] [N]
+chisel inspect       [root] [--query QUERY]
+chisel emit          <input-event-json> [root]
 ```
+
+`compile` is the compiler front door. It validates that the TOML source
+can be lowered into a runnable game plan. v0 implements this by reusing
+the current bootstrap/load validation; future versions split parsing,
+validation, compile, and instantiation into separate phases.
 
 With `--max-ticks`, `run` is batch mode: it advances the engine and exits.
 Without `--max-ticks`, `run` is persistent JSONL session mode: it reads
@@ -44,17 +58,16 @@ processor once. Session mode exposes the same path through
 Project codename (`chisel`) is provisional; the actual binary name is
 decided before v0 ships.
 
-## Authoring vs runtime contract
+## Command class contract
 
-| Subcommand | Touches disk? | Emits a command event? |
-| --- | --- | --- |
-| `new` | Creates project directory | No |
-| `add *` | Edits a TOML file | No |
-| `rule import / export` | Reads/writes JSONL or TOML | No |
-| `run` | Loads TOML | Spawns engine; loops `command:step` internally |
-| `step` | No | Yes (`command:step`) |
-| `inspect` | No | Yes (`command:inspect`); reads `snapshot` channel back |
-| `emit` | No | Yes — translated into a `simulate_input` command that walks the input → mapper → domain pipeline (current minimal CLI executes that path directly) |
+| Subcommand / record | Class | Touches TOML? | Advances time? | Primary output |
+| --- | --- | --- | --- | --- |
+| `new`, `add *` | Authoring | Yes | No | TOML files / stderr |
+| `compile` | Compiler | No | No | `diagnostic` records or human diagnostics |
+| `run` | Runtime launcher | No | Yes, when commanded | runtime JSONL |
+| `play` | Runtime launcher | No | Yes | window + runtime JSONL |
+| JSONL `command:*` | Session command | No | Depends on command | runtime JSONL |
+| `step`, `inspect`, `emit` | Convenience wrapper | No | Depends on wrapper | same as one session command |
 
 ## Example session
 
@@ -77,6 +90,7 @@ chisel add rule   ball-bounce \
 Runtime:
 
 ```bash
+chisel compile .
 chisel run . --max-ticks 600 > session.jsonl
 printf '%s\n' \
   '{"channel":"command","type":"step","count":1}' \

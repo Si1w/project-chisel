@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Channel {
+    Diagnostic,
     Input,
     Command,
     Domain,

@@ -42,6 +42,7 @@ In v0:
 | Scenes (instances + initial events) | `scenes/*.toml` | TOML |
 | Rules (event → match → action) | `rules/*.toml` | TOML |
 | Input mappings | `input.toml` | TOML |
+| Compiler diagnostics | `diagnostic` channel | JSONL |
 | Player input (real or simulated) | input channel | JSONL |
 | Game-meaningful events | domain channel | JSONL |
 | Animation marker events | marker channel | JSONL |
@@ -73,10 +74,11 @@ object-shaped and match derived serde output:
   sections bind entities by tag filters, and `"$name"` strings in
   `emit.payload` substitute the matched entity.
 
-The seven channels:
+The eight channels:
 
 | Channel | Direction | Who writes | Who reads |
 | --- | --- | --- | --- |
+| `diagnostic` | outbound | compiler commands | agent / human |
 | `input` | inbound | input source (stdin / scripted file) | input mapper |
 | `command` | inbound | agent / CLI | command handler (single internal consumer) |
 | `domain` | outbound + internal | ECS systems, rules | rules, agent observer |
@@ -87,6 +89,9 @@ The seven channels:
 
 In v0 all channels mux through stdin/stdout. Splitting to separate file
 descriptors is deferred to v1.
+
+The `diagnostic` channel is not a runtime bus subscription in v0. It is
+the compiler/tool output channel used by commands such as `compile`.
 
 In persistent session mode, stdin is the append-only command/input source
 and stdout is the append-only observation stream. The engine writes

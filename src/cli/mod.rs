@@ -6,12 +6,13 @@ use anyhow::{Context, Result, bail};
 use clap::Parser;
 use serde::Serialize;
 
-use crate::cli::args::{Cli, Command};
+use crate::cli::args::{Cli, Command, DiagnosticFormat};
 use crate::event::channel::Channel;
 use crate::event::envelope::BusEnvelope;
 use crate::event::payload::InputEvent;
 use crate::event::queue::EventQueue;
 use crate::runtime::bootstrap::bootstrap;
+use crate::runtime::compile::{CompileReport, DiagnosticLevel, compile_project};
 use crate::runtime::run::{MAX_RULE_ITERATIONS, run_jsonl_loop, run_ticks};
 use crate::runtime::snapshot::snapshot_world;
 use crate::{ecs::schedule::TickContext, event::payload::DomainEvent};
@@ -58,6 +59,14 @@ pub fn run_command_with_input(
     output: &mut impl Write,
 ) -> Result<()> {
     match cli.command {
+        Command::Compile { root, format } => {
+            let report = compile_project(&root);
+            write_compile_report(output, &report, format)?;
+            if report.has_errors() {
+                bail!("compile failed")
+            }
+            Ok(())
+        }
         Command::Run {
             root,
             dt,
@@ -127,6 +136,41 @@ pub fn run_command_with_input(
     }
 }
 
+fn write_compile_report(
+    output: &mut impl Write,
+    report: &CompileReport,
+    format: DiagnosticFormat,
+) -> Result<()> {
+    match format {
+        DiagnosticFormat::Human => {
+            for diagnostic in report.diagnostics() {
+                match diagnostic.level {
+                    DiagnosticLevel::Note => {
+                        writeln!(output, "compile ok: {}", diagnostic.message)?;
+                    }
+                    DiagnosticLevel::Warning => {
+                        writeln!(
+                            output,
+                            "warning[{}]: {}",
+                            diagnostic.code, diagnostic.message
+                        )?;
+                    }
+                    DiagnosticLevel::Error => {
+                        writeln!(output, "error[{}]: {}", diagnostic.code, diagnostic.message)?;
+                    }
+                }
+            }
+        }
+        DiagnosticFormat::Jsonl => {
+            for diagnostic in report.diagnostics() {
+                write_event(output, Channel::Diagnostic, diagnostic)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 fn write_domain_queue(
     domain_rx: &mut crate::event::bus::OutboundRx<DomainEvent>,
     output: &mut impl Write,
@@ -146,10 +190,12 @@ fn write_event<T: Serialize>(output: &mut impl Write, channel: Channel, event: &
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
     use std::io::Cursor;
     use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
-    use crate::cli::args::Command;
+    use crate::cli::args::{Command, DiagnosticFormat};
 
     use super::*;
 
@@ -169,6 +215,69 @@ mod tests {
         let output = String::from_utf8(output).expect("output should be utf8");
         assert!(output.lines().any(|line| {
             line.contains(r#""channel":"domain""#) && line.contains(r#""type":"collision""#)
+        }));
+    }
+
+    #[test]
+    fn compile_command_writes_human_success() {
+        let cli = Cli {
+            command: Command::Compile {
+                root: PathBuf::from("example/ball_collision"),
+                format: DiagnosticFormat::Human,
+            },
+        };
+        let mut output = Vec::new();
+
+        run_command(cli, &mut output).expect("compile command should execute");
+
+        let output = String::from_utf8(output).expect("output should be utf8");
+        assert!(output.contains("compile ok"));
+        assert!(output.contains("example/ball_collision"));
+    }
+
+    #[test]
+    fn compile_command_writes_jsonl_success() {
+        let cli = Cli {
+            command: Command::Compile {
+                root: PathBuf::from("example/ball_collision"),
+                format: DiagnosticFormat::Jsonl,
+            },
+        };
+        let mut output = Vec::new();
+
+        run_command(cli, &mut output).expect("compile command should execute");
+
+        let events = jsonl_values(output);
+        assert!(events.iter().any(|event| {
+            event.get("channel") == Some(&serde_json::json!("diagnostic"))
+                && event.get("level") == Some(&serde_json::json!("note"))
+                && event.get("code") == Some(&serde_json::json!("compile-ok"))
+        }));
+    }
+
+    #[test]
+    fn compile_command_reports_invalid_project_jsonl() {
+        let root = unique_temp_dir("compile-invalid");
+        fs::create_dir_all(&root).expect("temp project should be created");
+        let cli = Cli {
+            command: Command::Compile {
+                root: root.clone(),
+                format: DiagnosticFormat::Jsonl,
+            },
+        };
+        let mut output = Vec::new();
+
+        let error = run_command(cli, &mut output).expect_err("invalid project should fail");
+
+        assert!(error.to_string().contains("compile failed"));
+        let events = jsonl_values(output);
+        assert!(events.iter().any(|event| {
+            event.get("channel") == Some(&serde_json::json!("diagnostic"))
+                && event.get("level") == Some(&serde_json::json!("error"))
+                && event.get("code") == Some(&serde_json::json!("compile-failed"))
+                && event
+                    .get("message")
+                    .is_some_and(|message| message.to_string().contains("game.toml"))
         }));
     }
 
@@ -355,5 +464,13 @@ mod tests {
             .map(serde_json::from_str::<serde_json::Value>)
             .collect::<Result<Vec<_>, _>>()
             .expect("output should be JSONL")
+    }
+
+    fn unique_temp_dir(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("chisel-{name}-{nanos}"))
     }
 }

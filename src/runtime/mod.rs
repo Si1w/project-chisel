@@ -1,4 +1,5 @@
 pub mod bootstrap;
+pub mod compile;
 pub mod input;
 pub mod rules;
 pub mod run;

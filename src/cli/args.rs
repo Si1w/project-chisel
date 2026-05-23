@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 
 /// Top-level CLI. Provisional binary name; will be renamed before v0
 /// ships.
@@ -13,6 +13,14 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Compile TOML source into a validated in-memory game plan.
+    Compile {
+        #[arg(default_value = ".")]
+        root: PathBuf,
+        #[arg(long, value_enum, default_value_t = DiagnosticFormat::Human)]
+        format: DiagnosticFormat,
+    },
+
     /// Scaffold a new project directory.
     New { dir: PathBuf },
 
@@ -48,4 +56,10 @@ pub enum Command {
         #[arg(default_value = ".")]
         root: PathBuf,
     },
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+pub enum DiagnosticFormat {
+    Human,
+    Jsonl,
 }
